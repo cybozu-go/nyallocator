@@ -1,0 +1,42 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - nyallocator.cybozu.io
+  resources:
+  - nodetemplates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - nyallocator.cybozu.io
+  resources:
+  - nodetemplates/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - nyallocator.cybozu.io
+  resources:
+  - nodetemplates/status
+  verbs:
+  - get
+  - patch
+  - update

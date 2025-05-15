@@ -1,0 +1,49 @@
+apiVersion: nyallocator.cybozu.io/v1
+kind: NodeTemplate
+metadata:
+  name: control-plane
+spec:
+  dryRun: false
+  priority: 100
+  selector:
+    matchExpressions:
+      - {key: node-role.kubernetes.io/control-plane, operator: Exists}
+  nodes: 3
+  template:
+    metadata:
+      labels:
+        test.nyallocator.io: nyallocator
+---
+apiVersion: nyallocator.cybozu.io/v1
+kind: NodeTemplate
+metadata:
+  name: cs
+spec:
+  dryRun: false
+  priority: 10
+  selector:
+    matchExpressions:
+      - {key: node-role.kubernetes.io/control-plane, operator: DoesNotExist}
+      - {key: cke.cybozu.com/role, operator: In, values: [cs]}
+  nodes: 2
+  template:
+    metadata:
+      labels:
+        test.nyallocator.io: nyallocator
+---
+apiVersion: nyallocator.cybozu.io/v1
+kind: NodeTemplate
+metadata:
+  name: ss
+spec:
+  dryRun: false
+  priority: 1
+  selector:
+    matchExpressions:
+      - {key: node-role.kubernetes.io/control-plane, operator: DoesNotExist}
+      - {key: cke.cybozu.com/role, operator: In, values: [ss]}
+  nodes: 2
+  template:
+    metadata:
+      labels:
+        test.nyallocator.io: nyallocator
