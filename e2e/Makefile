@@ -19,7 +19,7 @@ KIND_CONFIG := kind-config.yaml
 IMAGE_NAME := controller:latest
 
 .PHONY: setup
-setup: bin_dir kubectl kustomize kind
+setup: kubectl kustomize kind
 
 .PHONY: start
 start:
@@ -36,7 +36,7 @@ stop:
 
 .PHONY: test
 test:
-	go test -v ./...
+	go test -ginkgo.v -count=1 -v ./...
 
 KUSTOMIZE_INSTALL_SCRIPT ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
 .PHONY: kustomize
@@ -53,9 +53,9 @@ $(KIND): $(BIN_DIR)
 .PHONY: kubectl
 kubectl: $(KUBECTL)
 $(KUBECTL): $(BIN_DIR)
-	$(CURL) -o $(BIN_DIR)/kubectl https://dl.k8s.io/release/v$(E2ETEST_K8S_VERSION)/bin/$(OS)/$(ARCH)/kubectl && chmod a+x $(BIN_DIR)/kubectl
+	$(CURL) -o $(BIN_DIR)/kubectl https://dl.k8s.io/release/v$(E2ETEST_K8S_VERSION)/bin/$(OS)/$(ARCH)/kubectl
+	chmod a+x $(BIN_DIR)/kubectl
 
-.PHONY: bin_dir
 $(BIN_DIR):
 	mkdir -p $(BIN_DIR)
 

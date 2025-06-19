@@ -73,32 +73,6 @@ var _ = Describe("NodeTemplate Controller", func() {
 			time.Sleep(100 * time.Millisecond)
 		})
 
-		It("should add spare label to nodes that have spare taint", func() {
-			By("creating Node")
-			nodes := []corev1.Node{
-				newNode("node1").withLabel(map[string]string{"node-role.kubernetes.io/worker": "true"}).withSpareTaint().build(),
-				newNode("node2").withLabel(map[string]string{"node-role.kubernetes.io/worker": "true"}).build(),
-			}
-			for _, node := range nodes {
-				err := k8sClient.Create(ctx, &node)
-				Expect(err).ToNot(HaveOccurred())
-			}
-
-			By("checking Node status")
-			Eventually(func(g Gomega) {
-				nodeList := &corev1.NodeList{}
-				err := k8sClient.List(ctx, nodeList)
-				g.Expect(err).ToNot(HaveOccurred())
-				for _, node := range nodeList.Items {
-					if node.Name == "node1" {
-						g.Expect(node.Labels).To(HaveKeyWithValue("node-role.kubernetes.io/spare", "true"))
-					} else if node.Name == "node2" {
-						g.Expect(node.Labels).ToNot(HaveKey("node-role.kubernetes.io/spare"))
-					}
-				}
-			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
-		})
-
 		It("should successfully allocate the nodes", func() {
 			By("creating Node")
 			nodes := []corev1.Node{
@@ -155,7 +129,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			n := &corev1.NodeList{}
 			err = k8sClient.List(ctx, n, client.MatchingLabels{"nyallocator.cybozu.io/node-template": "test"})
 			Expect(err).ToNot(HaveOccurred())
-			Expect(n.Items).To(HaveLen(2), "should have created 2 nodes")
+			Expect(n.Items).To(HaveLen(2), "should have allocated 2 nodes")
 			for _, node := range n.Items {
 				Expect(node.Labels).To(HaveKeyWithValue("test-label", "foo"), "node should have the correct label")
 				Expect(node.Annotations).To(HaveKeyWithValue("test-annotation", "bar"), "node should have the correct annotation")
@@ -172,12 +146,12 @@ var _ = Describe("NodeTemplate Controller", func() {
 			defer resp.Body.Close()
 			body, err := io.ReadAll(resp.Body)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(string(body)).To(ContainSubstring("nyallocator_expected{name=\"test\"} 2"))
-			Expect(string(body)).To(ContainSubstring("nyallocator_current{name=\"test\"} 2"))
-			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient{name=\"test\"} 1"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_desired_nodes{nodetemplate=\"test\"} 2"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_current_nodes{nodetemplate=\"test\"} 2"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient_nodes{nodetemplate=\"test\"} 1"))
 		})
 
-		It("should not create nodes when dry run is enabled", func() {
+		It("should not allocate nodes when dry run is enabled", func() {
 			By("creating Node")
 			nodes := []corev1.Node{
 				newNode("node1").withLabel(map[string]string{"node-role.kubernetes.io/worker": "true"}).withSpareTaint().build(),
@@ -324,12 +298,41 @@ var _ = Describe("NodeTemplate Controller", func() {
 			defer resp.Body.Close()
 			body, err := io.ReadAll(resp.Body)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(string(body)).To(ContainSubstring("nyallocator_expected{name=\"test1\"} 2"))
-			Expect(string(body)).To(ContainSubstring("nyallocator_expected{name=\"test2\"} 2"))
-			Expect(string(body)).To(ContainSubstring("nyallocator_current{name=\"test1\"} 1"))
-			Expect(string(body)).To(ContainSubstring("nyallocator_current{name=\"test2\"} 2"))
-			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient{name=\"test1\"} 0"))
-			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient{name=\"test2\"} 1"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_desired_nodes{nodetemplate=\"test1\"} 2"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_desired_nodes{nodetemplate=\"test2\"} 2"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_current_nodes{nodetemplate=\"test1\"} 1"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_current_nodes{nodetemplate=\"test2\"} 2"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient_nodes{nodetemplate=\"test1\"} 0"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient_nodes{nodetemplate=\"test2\"} 1"))
+
+			By("adding a new spare node")
+			newNode := newNode("node4").withLabel(map[string]string{"node-role.kubernetes.io/worker": "true"}).withSpareTaint().build()
+			err = k8sClient.Create(ctx, &newNode)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("checking node4 is used")
+			Eventually(func(g Gomega) {
+				node := &corev1.Node{}
+				err := k8sClient.Get(ctx, client.ObjectKey{Name: "node4"}, node)
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(node.Labels).To(HaveKeyWithValue("nyallocator.cybozu.io/node-template", "test1"))
+			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
+
+			By("checking NodeTemplate status")
+			checkNodeTemplateStatus("test1", true)
+			checkNodeTemplateStatus("test2", true)
+
+			By("checking metrics are exposed correctly")
+			resp, err = http.Get("http://localhost:8080/metrics")
+			Expect(err).ToNot(HaveOccurred())
+			body, err = io.ReadAll(resp.Body)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(string(body)).To(ContainSubstring("nyallocator_desired_nodes{nodetemplate=\"test1\"} 2"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_desired_nodes{nodetemplate=\"test2\"} 2"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_current_nodes{nodetemplate=\"test1\"} 2"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_current_nodes{nodetemplate=\"test2\"} 2"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient_nodes{nodetemplate=\"test1\"} 1"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient_nodes{nodetemplate=\"test2\"} 1"))
 		})
 
 		It("should replace nodes when node is deleted", func() {
@@ -385,9 +388,9 @@ var _ = Describe("NodeTemplate Controller", func() {
 			defer resp.Body.Close()
 			body, err := io.ReadAll(resp.Body)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(string(body)).To(ContainSubstring("nyallocator_expected{name=\"test\"} 3"))
-			Expect(string(body)).To(ContainSubstring("nyallocator_current{name=\"test\"} 2"))
-			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient{name=\"test\"} 0"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_desired_nodes{nodetemplate=\"test\"} 3"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_current_nodes{nodetemplate=\"test\"} 2"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient_nodes{nodetemplate=\"test\"} 0"))
 
 			By("adding a new spare node")
 			newNode := newNode("node4").withLabel(map[string]string{"node-role.kubernetes.io/worker": "true"}).withSpareTaint().build()
@@ -408,9 +411,9 @@ var _ = Describe("NodeTemplate Controller", func() {
 			defer resp.Body.Close()
 			body, err = io.ReadAll(resp.Body)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(string(body)).To(ContainSubstring("nyallocator_expected{name=\"test\"} 3"))
-			Expect(string(body)).To(ContainSubstring("nyallocator_current{name=\"test\"} 3"))
-			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient{name=\"test\"} 1"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_desired_nodes{nodetemplate=\"test\"} 3"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_current_nodes{nodetemplate=\"test\"} 3"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient_nodes{nodetemplate=\"test\"} 1"))
 		})
 
 		It("should update nodes when the NodeTemplate is updated", func() {
@@ -443,6 +446,18 @@ var _ = Describe("NodeTemplate Controller", func() {
 							Labels: map[string]string{
 								"test-label": "foo",
 							},
+							Annotations: map[string]string{
+								"test-annotation": "foo",
+							},
+						},
+						Spec: nyallocatorv1.NodeConfigurationSpec{
+							Taints: []corev1.Taint{
+								{
+									Key:    "test-taint",
+									Value:  "foo",
+									Effect: corev1.TaintEffectNoSchedule,
+								},
+							},
 						},
 					},
 				},
@@ -468,6 +483,19 @@ var _ = Describe("NodeTemplate Controller", func() {
 			Expect(err).ToNot(HaveOccurred())
 			nodeTemplate.Spec.Template.Metadata.Labels["test-label"] = "bar"
 			nodeTemplate.Spec.Template.Metadata.Labels["new-label"] = "baz"
+			nodeTemplate.Spec.Template.Metadata.Annotations["test-annotation"] = "bar"
+			nodeTemplate.Spec.Template.Metadata.Annotations["new-annotation"] = "baz"
+			nodeTemplate.Spec.Template.Spec.Taints[0] = corev1.Taint{
+				Key:    "test-taint",
+				Value:  "bar",
+				Effect: corev1.TaintEffectNoExecute,
+			}
+			nodeTemplate.Spec.Template.Spec.Taints = append(nodeTemplate.Spec.Template.Spec.Taints, corev1.Taint{
+				Key:    "new-taint",
+				Value:  "baz",
+				Effect: corev1.TaintEffectNoSchedule,
+			})
+
 			err = k8sClient.Update(ctx, nodeTemplate)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -479,8 +507,60 @@ var _ = Describe("NodeTemplate Controller", func() {
 			err = k8sClient.List(ctx, allNodes)
 			Expect(err).ToNot(HaveOccurred())
 			for _, node := range allNodes.Items {
-				Expect(node.Labels).To(HaveKeyWithValue("test-label", "bar"), "node should have the updated label")
-				Expect(node.Labels).To(HaveKeyWithValue("new-label", "baz"), "node should have the new label")
+				Expect(node.Labels).To(HaveKeyWithValue("test-label", "bar"))
+				Expect(node.Labels).To(HaveKeyWithValue("new-label", "baz"))
+				Expect(node.Annotations).To(HaveKeyWithValue("test-annotation", "bar"))
+				Expect(node.Annotations).To(HaveKeyWithValue("new-annotation", "baz"))
+				Expect(node.Spec.Taints).To(ContainElement(corev1.Taint{
+					Key:    "test-taint",
+					Value:  "bar",
+					Effect: corev1.TaintEffectNoExecute,
+				}))
+				Expect(node.Spec.Taints).To(ContainElement(corev1.Taint{
+					Key:    "new-taint",
+					Value:  "baz",
+					Effect: corev1.TaintEffectNoSchedule,
+				}), "node should have the new taint node:"+node.Name)
+			}
+
+			By("removing label, annotation, taint from NodeTemplate")
+			nodeTemplate = &nyallocatorv1.NodeTemplate{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nodeTemplate)
+			Expect(err).ToNot(HaveOccurred())
+			delete(nodeTemplate.Spec.Template.Metadata.Labels, "new-label")
+			delete(nodeTemplate.Spec.Template.Metadata.Annotations, "new-annotation")
+			nodeTemplate.Spec.Template.Spec.Taints = []corev1.Taint{
+				{
+					Key:    "test-taint",
+					Value:  "bar",
+					Effect: corev1.TaintEffectNoExecute,
+				},
+			}
+			err = k8sClient.Update(ctx, nodeTemplate)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("checking NodeTemplate status after update")
+			checkNodeTemplateStatus("test", true)
+
+			By("checking label, annotation, taint are not removed from Node")
+			allNodes = &corev1.NodeList{}
+			err = k8sClient.List(ctx, allNodes)
+			Expect(err).ToNot(HaveOccurred())
+			for _, node := range allNodes.Items {
+				Expect(node.Labels).To(HaveKeyWithValue("test-label", "bar"))
+				Expect(node.Labels).To(HaveKeyWithValue("new-label", "baz"))
+				Expect(node.Annotations).To(HaveKeyWithValue("test-annotation", "bar"))
+				Expect(node.Annotations).To(HaveKeyWithValue("new-annotation", "baz"))
+				Expect(node.Spec.Taints).To(ContainElement(corev1.Taint{
+					Key:    "test-taint",
+					Value:  "bar",
+					Effect: corev1.TaintEffectNoExecute,
+				}))
+				Expect(node.Spec.Taints).To(ContainElement(corev1.Taint{
+					Key:    "new-taint",
+					Value:  "baz",
+					Effect: corev1.TaintEffectNoSchedule,
+				}), "node should have the new taint node:"+node.Name)
 			}
 		})
 
@@ -744,9 +824,9 @@ var _ = Describe("NodeTemplate Controller", func() {
 			defer resp.Body.Close()
 			body, err := io.ReadAll(resp.Body)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(string(body)).NotTo(ContainSubstring("nyallocator_expected{name=\"test\"}"))
-			Expect(string(body)).NotTo(ContainSubstring("nyallocator_current{name=\"test\"}"))
-			Expect(string(body)).NotTo(ContainSubstring("nyallocator_sufficient{name=\"test\"}"))
+			Expect(string(body)).NotTo(ContainSubstring("nyallocator_desired_nodes{nodetemplate=\"test\"}"))
+			Expect(string(body)).NotTo(ContainSubstring("nyallocator_current_nodes{nodetemplate=\"test\"}"))
+			Expect(string(body)).NotTo(ContainSubstring("nyallocator_sufficient_nodes{nodetemplate=\"test\"}"))
 		})
 	})
 })
@@ -787,14 +867,16 @@ func (n NodeBuilder) build() corev1.Node {
 	return n.Node
 }
 
-func checkNodeTemplateStatus(name string, checkSufficient bool) {
+func checkNodeTemplateStatus(name string, expectSufficient bool) {
 	Eventually(func(g Gomega) {
 		nt := &nyallocatorv1.NodeTemplate{}
 		err := k8sClient.Get(ctx, client.ObjectKey{Name: name}, nt)
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(nt.Status.ReconcileInfo.Generation).To(Equal(nt.ObjectMeta.Generation))
-		if checkSufficient {
+		if expectSufficient {
 			g.Expect(nt.Status.Sufficient).To(BeTrue())
+		} else {
+			g.Expect(nt.Status.Sufficient).To(BeFalse())
 		}
 	}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 }

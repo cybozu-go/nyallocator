@@ -1,5 +1,4 @@
-nyallocator
-============================
+# nyallocator
 
 **Project Status**: Initial development
 
@@ -7,4 +6,4 @@ nyallocator
 
 [docs](docs/) directory contains documents about designs and specifications.
 
-[releases]: https://github.com/cybozu-go/neco-template/releases
+[releases]: https://github.com/cybozu-go/nyallocator/releases

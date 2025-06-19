@@ -12,7 +12,7 @@ spec:
   template:
     metadata:
       labels:
-        test.nyallocator.io: nyallocator
+        nyallocator.cybozu.io/test: nyallocator
 ---
 apiVersion: nyallocator.cybozu.io/v1
 kind: NodeTemplate
@@ -29,7 +29,7 @@ spec:
   template:
     metadata:
       labels:
-        test.nyallocator.io: nyallocator
+        nyallocator.cybozu.io/test: nyallocator
 ---
 apiVersion: nyallocator.cybozu.io/v1
 kind: NodeTemplate
@@ -46,4 +46,4 @@ spec:
   template:
     metadata:
       labels:
-        test.nyallocator.io: nyallocator
+        nyallocator.cybozu.io/test: nyallocator

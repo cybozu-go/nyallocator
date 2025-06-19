@@ -12,24 +12,24 @@ const (
 var (
 	CurrentNodesVec = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: metricsNamespace,
-		Name:      "current",
+		Name:      "current_nodes",
 		Help:      "Number of nodes under the NodeTemplate",
-	}, []string{"name"})
-	ExpectedNodesVec = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	}, []string{"nodetemplate"})
+	DesiredNodesVec = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: metricsNamespace,
-		Name:      "expected",
+		Name:      "desired_nodes",
 		Help:      "Number of nodes specified in the NodeTemplate",
-	}, []string{"name"})
+	}, []string{"nodetemplate"})
 
 	SufficientNodesVec = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: metricsNamespace,
-		Name:      "sufficient",
+		Name:      "sufficient_nodes",
 		Help:      "Whether Number of nodes under NodeTemplate is sufficient or not",
-	}, []string{"name"})
+	}, []string{"nodetemplate"})
 )
 
 func init() {
 	metrics.Registry.MustRegister(CurrentNodesVec)
-	metrics.Registry.MustRegister(ExpectedNodesVec)
+	metrics.Registry.MustRegister(DesiredNodesVec)
 	metrics.Registry.MustRegister(SufficientNodesVec)
 }

@@ -75,7 +75,7 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			delete(node.Labels, NodeTemplateReferenceLabelKey)
 			log.Info("node template is being deleted, removing reference label",
 				"node", node.Name,
-				"NodeTemplate", nodeTemplate.Name,
+				"nodetemplate", nodeTemplate.Name,
 			)
 			err = r.Client.Update(ctx, &node)
 			if err != nil {
@@ -84,7 +84,7 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 		// remove finalizer
 		nodeTemplate.Finalizers = nil
-		log.Info("removing finalizer", "NodeTemplate", nodeTemplate.Name, "finalizer", nodeTemplate.Finalizers)
+		log.Info("removing finalizer", "nodetemplate", nodeTemplate.Name, "finalizer", nodeTemplate.Finalizers)
 		err = r.Update(ctx, nodeTemplate)
 		if err != nil {
 			return ctrl.Result{}, err
@@ -114,12 +114,12 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		if !reflect.DeepEqual(*nodeOriginal, node) {
 			log.Info("updating node",
 				"node", node.Name,
-				"NodeTemplate", nodeTemplate.Name,
+				"nodetemplate", nodeTemplate.Name,
 			)
 			if nodeTemplate.Spec.DryRun {
 				log.Info("dry run mode, skipping update nodes.\n diff:\n"+calcDiff(nodeOriginal, &node),
 					"node", node.Name,
-					"NodeTemplate", nodeTemplate.Name,
+					"nodetemplate", nodeTemplate.Name,
 					"phase", "updating",
 				)
 				continue
@@ -140,10 +140,10 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	for _, nt := range nodeTemplates.Items {
 		if nt.Spec.Priority > nodeTemplate.Spec.Priority && !nt.Status.Sufficient {
 			log.Info("skip ensuring node, because there is a NodeTemplate with higher priority that is not sufficient",
-				"target", nodeTemplate.Name,
+				"nodetemplate", nodeTemplate.Name,
 				"prior", nt.Name,
 				"current", nt.Status.CurrentNodes,
-				"expected", nt.Spec.Nodes,
+				"desired", nt.Spec.Nodes,
 			)
 			return ctrl.Result{}, nil
 		}
@@ -158,15 +158,13 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	for _, node := range allNode.Items {
-		for _, taint := range node.Spec.Taints {
-			if taint.Key == SpareTaintKey {
-				selector, err := metav1.LabelSelectorAsSelector(nodeTemplate.Spec.Selector)
-				if err != nil {
-					return ctrl.Result{}, err
-				}
-				if selector.Matches(labels.Set(node.Labels)) {
-					spareNodes[node.Name] = node
-				}
+		if _, ok := node.Labels[NodeTemplateReferenceLabelKey]; !ok && node.Labels[SpareRoleLabelKey] == "true" {
+			selector, err := metav1.LabelSelectorAsSelector(nodeTemplate.Spec.Selector)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+			if selector.Matches(labels.Set(node.Labels)) {
+				spareNodes[node.Name] = node
 			}
 		}
 	}
@@ -180,7 +178,7 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	for i := len(existingNodes.Items); i < nodeTemplate.Spec.Nodes; i++ {
 		if len(spareNodes) == 0 {
-			log.Info("no spare nodes found", "target", nodeTemplate.Name)
+			log.Info("no spare nodes found", "nodetemplate", nodeTemplate.Name)
 			continue
 		}
 
@@ -191,24 +189,11 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 		candidateOriginal := candidate.DeepCopy()
 
-		// remove spare taint
-		for i, taint := range candidate.Spec.Taints {
-			if taint.Key == SpareTaintKey {
-				candidate.Spec.Taints = slices.Delete(candidate.Spec.Taints, i, i+1)
-			}
-		}
-
-		// remove spare label
-		delete(candidate.Labels, SpareRoleLabelKey)
-
-		// add reference label
-		candidate.Labels[NodeTemplateReferenceLabelKey] = nodeTemplate.Name
-
 		r.reflectNodeConfiguration(&candidate, nodeTemplate)
 		if nodeTemplate.Spec.DryRun {
 			log.Info("dry run mode, skipping update nodes.\n diff:\n"+calcDiff(candidateOriginal, &candidate),
 				"node", candidate.Name,
-				"NodeTemplate", nodeTemplate.Name,
+				"nodetemplate", nodeTemplate.Name,
 				"phase", "ensuring",
 			)
 			continue
@@ -219,7 +204,7 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 		log.Info("allocated node",
 			"node", candidate.Name,
-			"NodeTemplate", nodeTemplate.Name,
+			"nodetemplate", nodeTemplate.Name,
 		)
 	}
 
@@ -227,29 +212,37 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 }
 
 func (r *NodeTemplateReconciler) reflectNodeConfiguration(node *corev1.Node, nodeTemplate *nyallocatorv1.NodeTemplate) {
-	if nodeTemplate.Spec.Template.Spec.Taints != nil && node.Spec.Taints == nil {
-		node.Spec.Taints = []corev1.Taint{}
+	if nodeTemplate.Spec.Template.Metadata.Labels != nil && node.Labels == nil {
+		node.Labels = make(map[string]string)
 	}
+	if nodeTemplate.Spec.Template.Metadata.Annotations != nil && node.Annotations == nil {
+		node.Annotations = make(map[string]string)
+	}
+	// remove spare taint and label, and add node template reference label
+	for i, taint := range node.Spec.Taints {
+		if taint.Key == SpareTaintKey {
+			node.Spec.Taints = slices.Delete(node.Spec.Taints, i, i+1)
+		}
+	}
+	delete(node.Labels, SpareRoleLabelKey)
+	node.Labels[NodeTemplateReferenceLabelKey] = nodeTemplate.Name
+
 L:
 	for _, taint := range nodeTemplate.Spec.Template.Spec.Taints {
 		for i, t := range node.Spec.Taints {
 			if t.Key == taint.Key {
 				node.Spec.Taints[i] = taint
-				break L
+				continue L
 			}
 		}
 		node.Spec.Taints = append(node.Spec.Taints, taint)
 	}
-	if nodeTemplate.Spec.Template.Metadata.Labels != nil && node.Labels == nil {
-		node.Labels = make(map[string]string)
-	}
+
 	node.Labels["node-role.kubernetes.io"+"/"+nodeTemplate.Name] = "true"
 	for k, v := range nodeTemplate.Spec.Template.Metadata.Labels {
 		node.Labels[k] = v
 	}
-	if nodeTemplate.Spec.Template.Metadata.Annotations != nil && node.Annotations == nil {
-		node.Annotations = make(map[string]string)
-	}
+
 	for k, v := range nodeTemplate.Spec.Template.Metadata.Annotations {
 		node.Annotations[k] = v
 	}
@@ -297,38 +290,13 @@ func (r *NodeTemplateReconciler) updateMetrics(nodeTemplate *nyallocatorv1.NodeT
 		SufficientNodesVec.WithLabelValues(nodeTemplate.Name).Set(0)
 	}
 	CurrentNodesVec.WithLabelValues(nodeTemplate.Name).Set(float64(nodeTemplate.Status.CurrentNodes))
-	ExpectedNodesVec.WithLabelValues(nodeTemplate.Name).Set(float64(nodeTemplate.Spec.Nodes))
+	DesiredNodesVec.WithLabelValues(nodeTemplate.Name).Set(float64(nodeTemplate.Spec.Nodes))
 }
 
 func (r *NodeTemplateReconciler) removeMetrics(nodeTemplate *nyallocatorv1.NodeTemplate) {
 	SufficientNodesVec.DeleteLabelValues(nodeTemplate.Name)
 	CurrentNodesVec.DeleteLabelValues(nodeTemplate.Name)
-	ExpectedNodesVec.DeleteLabelValues(nodeTemplate.Name)
-}
-
-// +kubebuilder:rbac:groups=core,resources=nodes,verbs=get;list;watch;update;patch
-
-func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	node := corev1.Node{}
-	err := r.Client.Get(ctx, client.ObjectKey{Name: req.Name}, &node)
-	if err != nil {
-		if client.IgnoreNotFound(err) != nil {
-			return ctrl.Result{}, err
-		}
-	}
-	for _, taint := range node.Spec.Taints {
-		if taint.Key == SpareTaintKey {
-			if _, ok := node.Labels[SpareRoleLabelKey]; !ok {
-				// if spare node but does not have spare role label, add it
-				node.Labels[SpareRoleLabelKey] = "true"
-				err := r.Client.Update(ctx, &node)
-				if err != nil {
-					return ctrl.Result{}, err
-				}
-			}
-		}
-	}
-	return ctrl.Result{}, nil
+	DesiredNodesVec.DeleteLabelValues(nodeTemplate.Name)
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -338,22 +306,17 @@ func (r *NodeTemplateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(
 			&corev1.Node{},
 			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
-				var requests []reconcile.Request
 				nodeLabels := obj.GetLabels()
 				if val, ok := nodeLabels[NodeTemplateReferenceLabelKey]; ok {
-					nodeTemplate := &nyallocatorv1.NodeTemplate{}
-					err := r.Client.Get(ctx, client.ObjectKey{Name: val}, nodeTemplate)
-					if err != nil {
-						logf.Log.Info("failed to get NodeTemplate", "name", val)
-						return []reconcile.Request{}
-					}
-					requests = append(requests, reconcile.Request{
-						NamespacedName: client.ObjectKey{
-							Name: nodeTemplate.Name,
+					return []reconcile.Request{
+						{
+							NamespacedName: client.ObjectKey{
+								Name: val,
+							},
 						},
-					})
+					}
 				}
-				return requests
+				return nil
 			}),
 			builder.WithPredicates(
 				predicate.And(
@@ -372,19 +335,11 @@ func (r *NodeTemplateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			),
 		).
 		Named("nodetemplate").
-		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: 1}). // This must be 1 to avoid conflicts between NodeTemplates.
 		Complete(r)
 }
 
 func calcDiff(old, new *corev1.Node) string {
 	diff := cmp.Diff(old, new, cmpopts.IgnoreFields(*old, "Status"))
 	return diff
-}
-
-func (r *NodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&corev1.Node{}).
-		Named("node").
-		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
-		Complete(r)
 }
