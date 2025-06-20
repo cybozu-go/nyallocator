@@ -42,8 +42,8 @@ spec:
   priority: 1
   selector:
     matchExpressions:
- - {key: cke.cybozu.com/role, operator: In, values: [compute]}
- - {key: cke.cybozu.com/master, operator: NotIn, values: [true]}
+      - {key: cke.cybozu.com/role, operator: In, values: [compute]}
+      - {key: node-role.kubernetes.io/control-plane, operator: NotIn, values: [true]}
   nodes: 10
   template:
     metadata:

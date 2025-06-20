@@ -1,4 +1,3 @@
-# Build the manager binary
 FROM ghcr.io/cybozu/golang:1.24-noble AS builder
 ARG TARGETOS
 ARG TARGETARCH
@@ -12,7 +11,6 @@ COPY cmd/main.go cmd/main.go
 COPY api/ api/
 COPY internal/ internal/
 
-# Build
 
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o nyallocator-controller cmd/main.go
 

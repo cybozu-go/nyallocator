@@ -44,7 +44,7 @@ type NodeTemplateStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster
 // +kubebuilder:printcolumn:name="current",type="integer",JSONPath=`.status.currentNodes`,description="Current Nodes"
-// +kubebuilder:printcolumn:name="expected",type="integer",JSONPath=`.spec.nodes`,description="Expected Nodes"
+// +kubebuilder:printcolumn:name="desired",type="integer",JSONPath=`.spec.nodes`,description="Desired Nodes"
 // +kubebuilder:printcolumn:name="sufficient",type="boolean",JSONPath=`.status.sufficient`,description="Sufficient Nodes"
 // NodeTemplate is the Schema for the nodetemplates API.
 type NodeTemplate struct {

@@ -1,5 +1,4 @@
-Release procedure
-=================
+# Release procedure
 
 This document describes how to release a new version.
 

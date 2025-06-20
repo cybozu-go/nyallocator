@@ -5,7 +5,7 @@ ARCH ?= amd64
 OS ?= linux
 
 
-BIN_DIR := ./bin
+BIN_DIR := $(CURDIR)/bin
 
 CURL := curl -sSLf
 
@@ -19,7 +19,7 @@ KIND_CONFIG := kind-config.yaml
 IMAGE_NAME := controller:latest
 
 .PHONY: setup
-setup: kubectl kustomize kind
+setup: $(KUBECTL) $(KUSTOMIZE) $(KIND)
 
 .PHONY: start
 start:
@@ -38,20 +38,16 @@ stop:
 test:
 	go test -ginkgo.v -count=1 -v ./...
 
-KUSTOMIZE_INSTALL_SCRIPT ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
-.PHONY: kustomize
-kustomize: $(KUSTOMIZE)
 $(KUSTOMIZE): $(BIN_DIR)
-	$(CURL) $(KUSTOMIZE_INSTALL_SCRIPT) | bash -s -- $(subst v,,$(KUSTOMIZE_VERSION)) $(BIN_DIR)
+	$(CURL) -o $(KUSTOMIZE).tar.gz https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv$(KUSTOMIZE_VERSION)/kustomize_v$(KUSTOMIZE_VERSION)_$(OS)_$(ARCH).tar.gz
+	tar -xzf $(KUSTOMIZE).tar.gz -C $(BIN_DIR) kustomize
+	rm $(KUSTOMIZE).tar.gz
+	chmod a+x $(KUSTOMIZE)
 
-.PHONY: kind
-kind: $(KIND)
 $(KIND): $(BIN_DIR)
 	$(CURL) -o $(KIND) https://github.com/kubernetes-sigs/kind/releases/download/v$(KIND_VERSION)/kind-$(OS)-$(ARCH)
 	chmod a+x $(KIND)
 
-.PHONY: kubectl
-kubectl: $(KUBECTL)
 $(KUBECTL): $(BIN_DIR)
 	$(CURL) -o $(BIN_DIR)/kubectl https://dl.k8s.io/release/v$(E2ETEST_K8S_VERSION)/bin/$(OS)/$(ARCH)/kubectl
 	chmod a+x $(BIN_DIR)/kubectl
