@@ -1,12 +1,14 @@
 package e2e
 
 import (
+	"encoding/json"
 	"time"
 
 	nyallocatorv1 "github.com/cybozu-go/nyallocator/api/v1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 )
 
@@ -127,6 +129,90 @@ var _ = Describe("nyallocator e2e test", func() {
 		Expect(string(stderr)).To(ContainSubstring("ValidatingAdmissionPolicy"))
 
 		_, stderr, err = kubectl(nil, "label", "node", nodeName, "nyallocator.cybozu.io/node-template-", "--overwrite")
+		Expect(err).To(HaveOccurred())
+		Expect(string(stderr)).To(ContainSubstring("ValidatingAdmissionPolicy"))
+	})
+
+	It("should not allow use nyallocator reserved key in nodetemplate", func() {
+		By("creating a NodeTemplate with spare label")
+		nt := &nyallocatorv1.NodeTemplate{
+			TypeMeta:   metav1.TypeMeta{Kind: "NodeTemplate", APIVersion: nyallocatorv1.GroupVersion.String()},
+			ObjectMeta: metav1.ObjectMeta{Name: "test1"},
+			Spec: nyallocatorv1.NodeTemplateSpec{
+				Nodes: 1,
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"test": "test",
+					},
+				},
+				Template: nyallocatorv1.NodeConfiguration{
+					Metadata: nyallocatorv1.NodeConfigurationMetadata{
+						Labels: map[string]string{
+							"node-role.kubernetes.io/spare": "true",
+						},
+					},
+				},
+			},
+		}
+		jsonData, err := json.Marshal(nt)
+		Expect(err).NotTo(HaveOccurred())
+		_, stderr, err := kubectl(jsonData, "apply", "-f", "-")
+		Expect(err).To(HaveOccurred())
+		Expect(string(stderr)).To(ContainSubstring("ValidatingAdmissionPolicy"))
+
+		By("creating a NodeTemplate with reference label")
+		nt = &nyallocatorv1.NodeTemplate{
+			TypeMeta:   metav1.TypeMeta{Kind: "NodeTemplate", APIVersion: nyallocatorv1.GroupVersion.String()},
+			ObjectMeta: metav1.ObjectMeta{Name: "test2"},
+			Spec: nyallocatorv1.NodeTemplateSpec{
+				Nodes: 1,
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"test": "test",
+					},
+				},
+				Template: nyallocatorv1.NodeConfiguration{
+					Metadata: nyallocatorv1.NodeConfigurationMetadata{
+						Labels: map[string]string{
+							"nyallocator.cybozu.io/node-template": "test2",
+						},
+					},
+				},
+			},
+		}
+		jsonData, err = json.Marshal(nt)
+		Expect(err).NotTo(HaveOccurred())
+		_, stderr, err = kubectl(jsonData, "apply", "-f", "-")
+		Expect(err).To(HaveOccurred())
+		Expect(string(stderr)).To(ContainSubstring("ValidatingAdmissionPolicy"))
+
+		By("creating a NodeTemplate with spare taint")
+		nt = &nyallocatorv1.NodeTemplate{
+			TypeMeta:   metav1.TypeMeta{Kind: "NodeTemplate", APIVersion: nyallocatorv1.GroupVersion.String()},
+			ObjectMeta: metav1.ObjectMeta{Name: "test3"},
+			Spec: nyallocatorv1.NodeTemplateSpec{
+				Nodes: 1,
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"test": "test",
+					},
+				},
+				Template: nyallocatorv1.NodeConfiguration{
+					Spec: nyallocatorv1.NodeConfigurationSpec{
+						Taints: []corev1.Taint{
+							{
+								Key:    "nyallocator.cybozu.io/spare",
+								Value:  "true",
+								Effect: corev1.TaintEffectNoSchedule,
+							},
+						},
+					},
+				},
+			},
+		}
+		jsonData, err = json.Marshal(nt)
+		Expect(err).NotTo(HaveOccurred())
+		_, stderr, err = kubectl(jsonData, "apply", "-f", "-")
 		Expect(err).To(HaveOccurred())
 		Expect(string(stderr)).To(ContainSubstring("ValidatingAdmissionPolicy"))
 	})

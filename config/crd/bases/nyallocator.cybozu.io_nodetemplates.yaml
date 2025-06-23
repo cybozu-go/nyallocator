@@ -19,9 +19,9 @@ spec:
       jsonPath: .status.currentNodes
       name: current
       type: integer
-    - description: Expected Nodes
+    - description: Desired Nodes
       jsonPath: .spec.nodes
-      name: expected
+      name: desired
       type: integer
     - description: Sufficient Nodes
       jsonPath: .status.sufficient

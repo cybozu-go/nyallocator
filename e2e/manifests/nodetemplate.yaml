@@ -9,10 +9,6 @@ spec:
     matchExpressions:
       - {key: node-role.kubernetes.io/control-plane, operator: Exists}
   nodes: 3
-  template:
-    metadata:
-      labels:
-        nyallocator.cybozu.io/test: nyallocator
 ---
 apiVersion: nyallocator.cybozu.io/v1
 kind: NodeTemplate
@@ -44,6 +40,8 @@ spec:
       - {key: cke.cybozu.com/role, operator: In, values: [ss]}
   nodes: 2
   template:
-    metadata:
-      labels:
-        nyallocator.cybozu.io/test: nyallocator
+    spec:
+      taints:
+        - key: nyallocator.cybozu.io/test
+          value: "true"
+          effect: NoSchedule
