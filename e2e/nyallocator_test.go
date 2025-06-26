@@ -2,6 +2,9 @@ package e2e
 
 import (
 	"encoding/json"
+	"io"
+	"net/http"
+	"os/exec"
 	"time"
 
 	nyallocatorv1 "github.com/cybozu-go/nyallocator/api/v1"
@@ -13,6 +16,24 @@ import (
 )
 
 var _ = Describe("nyallocator e2e test", func() {
+	It("should set spare label", func() {
+		By("getting nodes")
+		nodes := &corev1.NodeList{}
+		out, stderr, err := kubectl(nil, "get", "nodes", "-o", "yaml")
+		Expect(err).NotTo(HaveOccurred(), stderr)
+		err = yaml.Unmarshal(out, nodes)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(nodes.Items).To(HaveLen(9))
+		for _, n := range nodes.Items {
+			for _, taint := range n.Spec.Taints {
+				if taint.Key == "nyallocator.cybozu.io/spare" {
+					Expect(n.Labels).To(HaveKeyWithValue("node-role.kubernetes.io/spare", "true"))
+
+				}
+			}
+		}
+	})
+
 	It("should allocate nodes", func() {
 		By("applying NodeTemplate manifest")
 		_, stderr, err := kubectl(nil, "apply", "-f", "./manifests/nodetemplate.yaml")
@@ -26,7 +47,7 @@ var _ = Describe("nyallocator e2e test", func() {
 			err = yaml.Unmarshal(out, &nt)
 			g.Expect(err).NotTo(HaveOccurred())
 			for _, n := range nt.Items {
-				g.Expect(n.Status.Sufficient).To(BeTrue())
+				g.Expect(isSufficient(&n)).To(BeTrue())
 			}
 		}).Should(Succeed(), "Node templates should be sufficient")
 
@@ -61,6 +82,31 @@ var _ = Describe("nyallocator e2e test", func() {
 			Expect(n.Labels).To(HaveKeyWithValue("cke.cybozu.com/role", "ss"))
 		}
 
+		By("checking the metrics")
+		portForwardCmd := exec.Command("./bin/kubectl", "port-forward", "-n", "nyallocator-system", "deployments/nyallocator-controller-manager", "8080:8080")
+		portForwardCmd.Start()
+		defer portForwardCmd.Process.Kill()
+
+		Eventually(func(g Gomega) {
+			res, err := http.Get("http://localhost:8080/metrics")
+			g.Expect(err).NotTo(HaveOccurred())
+			defer res.Body.Close()
+			g.Expect(res.StatusCode).To(Equal(http.StatusOK))
+			metrics, err := io.ReadAll(res.Body)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_current_nodes{nodetemplate="control-plane"} 3`))
+			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_desired_nodes{nodetemplate="control-plane"} 3`))
+			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_sufficient_nodes{nodetemplate="control-plane"} 1`))
+
+			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_current_nodes{nodetemplate="cs"} 2`))
+			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_desired_nodes{nodetemplate="cs"} 2`))
+			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_sufficient_nodes{nodetemplate="cs"} 1`))
+
+			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_current_nodes{nodetemplate="ss"} 2`))
+			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_desired_nodes{nodetemplate="ss"} 2`))
+			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_sufficient_nodes{nodetemplate="ss"} 1`))
+		}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
+
 	})
 
 	It("should allocate node when templates are updated", func() {
@@ -84,9 +130,9 @@ var _ = Describe("nyallocator e2e test", func() {
 			g.Expect(err).NotTo(HaveOccurred())
 			for _, n := range ntList.Items {
 				if n.Name == "ss" {
-					g.Expect(n.Status.ReconcileInfo.Generation).To(Equal(generation + 1))
+					g.Expect(n.Status.ReconcileInfo.ObservedGeneration).To(Equal(generation + 1))
 				}
-				g.Expect(n.Status.Sufficient).To(BeTrue())
+				g.Expect(isSufficient(&n)).To(BeTrue())
 			}
 		}).Should(Succeed(), "Node templates should be sufficient after update")
 	})
@@ -111,6 +157,35 @@ var _ = Describe("nyallocator e2e test", func() {
 			err = yaml.Unmarshal(out, cs)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(cs.Items).To(HaveLen(2))
+		}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
+	})
+
+	It("should change status if insufficient", func() {
+		By("updating NodeTemplate manifest")
+		nt := &nyallocatorv1.NodeTemplate{}
+		out, stderr, err := kubectl(nil, "get", "nodetemplates", "ss", "-o", "yaml")
+		Expect(err).NotTo(HaveOccurred(), stderr)
+		err = yaml.Unmarshal(out, nt)
+		Expect(err).NotTo(HaveOccurred())
+		generation := nt.ObjectMeta.Generation
+
+		_, stderr, err = kubectl(nil, "patch", "nodetemplates", "ss", "--type=merge", "-p", `{"spec":{"nodes":4}}`)
+		Expect(err).NotTo(HaveOccurred(), stderr)
+
+		By("checking node templates after update")
+		Eventually(func(g Gomega) {
+			nt := &nyallocatorv1.NodeTemplate{}
+			out, stderr, err := kubectl(nil, "get", "nodetemplates", "ss", "-o", "yaml")
+			g.Expect(err).NotTo(HaveOccurred(), stderr)
+			err = yaml.Unmarshal(out, nt)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(nt.Status.ReconcileInfo.ObservedGeneration).To(Equal(generation + 1))
+			for _, condition := range nt.Status.Conditions {
+				if condition.Type == "Sufficient" {
+					g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+					g.Expect(condition.Reason).To(Equal("NoSpareNodesFound"))
+				}
+			}
 		}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 	})
 
@@ -215,5 +290,30 @@ var _ = Describe("nyallocator e2e test", func() {
 		_, stderr, err = kubectl(jsonData, "apply", "-f", "-")
 		Expect(err).To(HaveOccurred())
 		Expect(string(stderr)).To(ContainSubstring("ValidatingAdmissionPolicy"))
+	})
+
+	It("should success delete NodeTemplate", func() {
+		By("deleting a NodeTemplate")
+		_, stderr, err := kubectl(nil, "delete", "nodetemplates", "ss")
+		Expect(err).NotTo(HaveOccurred(), stderr)
+
+		By("checking nodes")
+		Eventually(func(g Gomega) {
+			ss := &corev1.NodeList{}
+			out, stderr, err := kubectl(nil, "get", "nodes", "-l", "cke.cybozu.com/role=ss", "-o", "yaml")
+			g.Expect(err).NotTo(HaveOccurred(), stderr)
+			err = yaml.Unmarshal(out, ss)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(ss.Items).To(HaveLen(3))
+			for _, n := range ss.Items {
+				g.Expect(n.Labels).NotTo(HaveKey("nyallocator.cybozu.io/node-template"))
+			}
+		}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
+
+		By("checking NodeTemplate")
+		_, stderr, err = kubectl(nil, "get", "nodetemplates", "ss")
+		Expect(err).To(HaveOccurred(), stderr)
+		Expect(string(stderr)).To(ContainSubstring("not found"))
+
 	})
 })

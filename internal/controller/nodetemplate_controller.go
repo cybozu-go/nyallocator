@@ -29,7 +29,13 @@ const (
 	NodeTemplateReferenceLabelKey = "nyallocator.cybozu.io/node-template"
 	ZoneLabelKey                  = "topology.kubernetes.io/zone"
 	NodeTemplateFinalizer         = "nyallocator.cybozu.io/finalizer"
+	ConditionSufficient           = "Sufficient"
 )
+
+type InsufficientReason struct {
+	HighPriorityNodeTemplateExists bool
+	NoSpareNodesFound              bool
+}
 
 type NodeTemplateReconciler struct {
 	client.Client
@@ -47,6 +53,7 @@ type NodeReconciler struct {
 
 func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	log := logf.FromContext(ctx)
+	statusReason := InsufficientReason{}
 
 	nodeTemplate := &nyallocatorv1.NodeTemplate{}
 	err = r.Client.Get(ctx, client.ObjectKey{Name: req.Name}, nodeTemplate)
@@ -94,18 +101,18 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	defer func() {
-		updateStatusErr := r.updateStatus(ctx, nodeTemplate)
+	defer func(reason *InsufficientReason) {
+		updateStatusErr := r.updateStatus(ctx, nodeTemplate, reason, err)
 		if updateStatusErr != nil {
 			err = updateStatusErr
 		}
 		// if nodeTemplate.Status.Sufficient is not true, requeue after 1 second
-		if !nodeTemplate.Status.Sufficient {
+		if !isSufficient(nodeTemplate) {
 			result = ctrl.Result{
 				RequeueAfter: time.Second * 1,
 			}
 		}
-	}()
+	}(&statusReason)
 
 	// sync existing nodes
 	for _, node := range existingNodes.Items {
@@ -138,13 +145,14 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 	for _, nt := range nodeTemplates.Items {
-		if nt.Spec.Priority > nodeTemplate.Spec.Priority && !nt.Status.Sufficient {
+		if nt.Spec.Priority > nodeTemplate.Spec.Priority && !isSufficient(&nt) {
 			log.Info("skip ensuring node, because there is a NodeTemplate with higher priority that is not sufficient",
 				"nodetemplate", nodeTemplate.Name,
 				"prior", nt.Name,
 				"current", nt.Status.CurrentNodes,
 				"desired", nt.Spec.Nodes,
 			)
+			statusReason.HighPriorityNodeTemplateExists = true
 			return ctrl.Result{}, nil
 		}
 	}
@@ -179,7 +187,8 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	for i := len(existingNodes.Items); i < nodeTemplate.Spec.Nodes; i++ {
 		if len(spareNodes) == 0 {
 			log.Info("no spare nodes found", "nodetemplate", nodeTemplate.Name)
-			continue
+			statusReason.NoSpareNodesFound = true
+			return ctrl.Result{}, nil
 		}
 
 		candidate := selectNodes(spareNodes, countNodeByZone)
@@ -266,15 +275,57 @@ func selectNodes(spareNodes map[string]corev1.Node, zoneCount map[string]int) co
 	return spareNodes[maxScoreNode]
 }
 
-func (r *NodeTemplateReconciler) updateStatus(ctx context.Context, nodeTemplate *nyallocatorv1.NodeTemplate) error {
+func (r *NodeTemplateReconciler) updateStatus(ctx context.Context, nodeTemplate *nyallocatorv1.NodeTemplate, reason *InsufficientReason, reconcileError error) error {
 	nodes := corev1.NodeList{}
 	err := r.Client.List(ctx, &nodes, client.MatchingLabels{NodeTemplateReferenceLabelKey: nodeTemplate.Name})
 	if err != nil {
 		return err
 	}
-	nodeTemplate.Status.ReconcileInfo.Generation = nodeTemplate.Generation
+	nodeTemplate.Status.ReconcileInfo.ObservedGeneration = nodeTemplate.Generation
+
 	nodeTemplate.Status.CurrentNodes = len(nodes.Items)
-	nodeTemplate.Status.Sufficient = nodeTemplate.Status.CurrentNodes >= nodeTemplate.Spec.Nodes
+
+	conditionSufficient := metav1.Condition{
+		Type:               ConditionSufficient,
+		LastTransitionTime: metav1.Now(),
+	}
+
+	if nodeTemplate.Status.CurrentNodes < nodeTemplate.Spec.Nodes {
+		conditionSufficient.Status = metav1.ConditionFalse
+		if reason.HighPriorityNodeTemplateExists {
+			conditionSufficient.Reason = "HighPriorityNodeTemplateExists"
+			conditionSufficient.Message = "There is a NodeTemplate with higher priority that is not sufficient"
+		} else if reason.NoSpareNodesFound {
+			conditionSufficient.Reason = "NoSpareNodesFound"
+			conditionSufficient.Message = "No spare nodes found"
+		} else {
+			conditionSufficient.Reason = "ReconcileError"
+			conditionSufficient.Message = "Current nodes are insufficient because of reconcile error"
+		}
+	} else {
+		conditionSufficient.Status = metav1.ConditionTrue
+		conditionSufficient.Reason = "SufficientNodes"
+		conditionSufficient.Message = "Current nodes are sufficient"
+	}
+	conditionReconcileSuccess := metav1.Condition{
+		Type:               "ReconcileSuccess",
+		LastTransitionTime: metav1.Now(),
+	}
+	if reconcileError != nil {
+		conditionReconcileSuccess.Status = metav1.ConditionFalse
+		conditionReconcileSuccess.Reason = "ReconcileError"
+		conditionReconcileSuccess.Message = reconcileError.Error()
+	} else {
+		conditionReconcileSuccess.Status = metav1.ConditionTrue
+		conditionReconcileSuccess.Reason = "ReconcileSuccess"
+		conditionReconcileSuccess.Message = "Reconcile succeeded"
+	}
+
+	nodeTemplate.Status.Conditions = []metav1.Condition{
+		conditionSufficient,
+		conditionReconcileSuccess,
+	}
+
 	r.updateMetrics(nodeTemplate)
 	err = r.Client.Status().Update(ctx, nodeTemplate)
 	if err != nil {
@@ -284,7 +335,7 @@ func (r *NodeTemplateReconciler) updateStatus(ctx context.Context, nodeTemplate 
 }
 
 func (r *NodeTemplateReconciler) updateMetrics(nodeTemplate *nyallocatorv1.NodeTemplate) {
-	if nodeTemplate.Status.Sufficient {
+	if isSufficient(nodeTemplate) {
 		SufficientNodesVec.WithLabelValues(nodeTemplate.Name).Set(1)
 	} else {
 		SufficientNodesVec.WithLabelValues(nodeTemplate.Name).Set(0)
@@ -297,6 +348,15 @@ func (r *NodeTemplateReconciler) removeMetrics(nodeTemplate *nyallocatorv1.NodeT
 	SufficientNodesVec.DeleteLabelValues(nodeTemplate.Name)
 	CurrentNodesVec.DeleteLabelValues(nodeTemplate.Name)
 	DesiredNodesVec.DeleteLabelValues(nodeTemplate.Name)
+}
+
+func isSufficient(nodeTemplate *nyallocatorv1.NodeTemplate) bool {
+	for _, condition := range nodeTemplate.Status.Conditions {
+		if condition.Type == ConditionSufficient && condition.Status == metav1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }
 
 // SetupWithManager sets up the controller with the Manager.

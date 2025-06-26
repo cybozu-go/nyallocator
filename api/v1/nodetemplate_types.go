@@ -31,13 +31,13 @@ type NodeTemplateSpec struct {
 }
 
 type ReconcileInfo struct {
-	Generation int64 `json:"generation,omitempty"`
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
 type NodeTemplateStatus struct {
-	CurrentNodes  int           `json:"currentNodes"`
-	Sufficient    bool          `json:"sufficient"`
-	ReconcileInfo ReconcileInfo `json:"reconcileInfo"`
+	Conditions    []metav1.Condition `json:"conditions,omitempty"`
+	CurrentNodes  int                `json:"currentNodes"`
+	ReconcileInfo ReconcileInfo      `json:"reconcileInfo"`
 }
 
 // +kubebuilder:object:root=true
@@ -45,7 +45,7 @@ type NodeTemplateStatus struct {
 // +kubebuilder:resource:scope=Cluster
 // +kubebuilder:printcolumn:name="current",type="integer",JSONPath=`.status.currentNodes`,description="Current Nodes"
 // +kubebuilder:printcolumn:name="desired",type="integer",JSONPath=`.spec.nodes`,description="Desired Nodes"
-// +kubebuilder:printcolumn:name="sufficient",type="boolean",JSONPath=`.status.sufficient`,description="Sufficient Nodes"
+// +kubebuilder:printcolumn:name="sufficient",type="string",JSONPath=`.status.conditions[?(@.type=="Sufficient")].status`,description="Sufficient Nodes"
 // NodeTemplate is the Schema for the nodetemplates API.
 type NodeTemplate struct {
 	metav1.TypeMeta   `json:",inline"`

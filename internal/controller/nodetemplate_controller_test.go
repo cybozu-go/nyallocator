@@ -265,6 +265,30 @@ var _ = Describe("NodeTemplate Controller", func() {
 			checkNodeTemplateStatus("test1", false)
 			checkNodeTemplateStatus("test2", false)
 
+			By("checking the insufficient reason")
+			nt := &nyallocatorv1.NodeTemplate{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test1"}, nt)
+			Expect(err).ToNot(HaveOccurred())
+			for _, condition := range nt.Status.Conditions {
+				if condition.Type == ConditionSufficient {
+					Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+					Expect(condition.Reason).To(Equal("HighPriorityNodeTemplateExists"))
+					break
+				}
+			}
+
+			By("checking the insufficient reason")
+			nt = &nyallocatorv1.NodeTemplate{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test2"}, nt)
+			Expect(err).ToNot(HaveOccurred())
+			for _, condition := range nt.Status.Conditions {
+				if condition.Type == ConditionSufficient {
+					Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+					Expect(condition.Reason).To(Equal("NoSpareNodesFound"))
+					break
+				}
+			}
+
 			By("creating Node")
 			nodes := []corev1.Node{
 				newNode("node1").withLabel(map[string]string{"node-role.kubernetes.io/worker": "true"}).withSpareTaint().build(),
@@ -279,6 +303,20 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("checking NodeTemplate status")
 			checkNodeTemplateStatus("test1", false)
 			checkNodeTemplateStatus("test2", true)
+
+			By("checking the insufficient reason is changed")
+			Eventually(func(g Gomega) {
+				nt = &nyallocatorv1.NodeTemplate{}
+				err = k8sClient.Get(ctx, client.ObjectKey{Name: "test1"}, nt)
+				g.Expect(err).ToNot(HaveOccurred())
+				for _, condition := range nt.Status.Conditions {
+					if condition.Type == ConditionSufficient {
+						g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+						g.Expect(condition.Reason).To(Equal("NoSpareNodesFound"))
+						break
+					}
+				}
+			}).WithTimeout(30 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 
 			By("checking nodes are created according to priority")
 			Eventually(func(g Gomega) {
@@ -380,6 +418,18 @@ var _ = Describe("NodeTemplate Controller", func() {
 
 			By("checking NodeTemplate status after deletion")
 			checkNodeTemplateStatus("test", false)
+
+			By("checking the insufficient reason")
+			nt := &nyallocatorv1.NodeTemplate{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
+			Expect(err).ToNot(HaveOccurred())
+			for _, condition := range nt.Status.Conditions {
+				if condition.Type == ConditionSufficient {
+					Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+					Expect(condition.Reason).To(Equal("NoSpareNodesFound"))
+					break
+				}
+			}
 
 			By("checking metrics are exposed correctly")
 			resp, err := http.Get("http://localhost:8080/metrics")
@@ -560,6 +610,133 @@ var _ = Describe("NodeTemplate Controller", func() {
 					Value:  "baz",
 					Effect: corev1.TaintEffectNoSchedule,
 				}), "node should have the new taint node:"+node.Name)
+			}
+		})
+
+		It("should update nodes even when the allocation is failed", func() {
+			By("creating Node")
+			nodes := []corev1.Node{
+				newNode("node1").withLabel(map[string]string{"node-role.kubernetes.io/worker": "true"}).withSpareTaint().build(),
+				newNode("node2").withLabel(map[string]string{"node-role.kubernetes.io/worker": "true"}).withSpareTaint().build(),
+				newNode("node3").withLabel(map[string]string{"node-role.kubernetes.io/worker": "true"}).withSpareTaint().build(),
+			}
+			for _, node := range nodes {
+				err := k8sClient.Create(ctx, &node)
+				Expect(err).ToNot(HaveOccurred())
+			}
+
+			By("creating NodeTemplate")
+			nodeTemplate := &nyallocatorv1.NodeTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test",
+				},
+				Spec: nyallocatorv1.NodeTemplateSpec{
+					DryRun:   false,
+					Priority: 1,
+					Nodes:    4,
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"node-role.kubernetes.io/worker": "true",
+						},
+					},
+					Template: nyallocatorv1.NodeConfiguration{
+						Metadata: nyallocatorv1.NodeConfigurationMetadata{
+							Labels: map[string]string{
+								"test-label": "foo",
+							},
+						},
+					},
+				},
+			}
+			err := k8sClient.Create(ctx, nodeTemplate)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("checking NodeTemplate status")
+			checkNodeTemplateStatus("test", false)
+			nt := &nyallocatorv1.NodeTemplate{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(nt.Status.CurrentNodes).To(Equal(3))
+
+			By("updating NodeTemplate")
+			nt.Spec.Template.Metadata.Labels["new-label"] = "bar"
+			err = k8sClient.Update(ctx, nt)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("waiting for the NodeTemplate to be updated")
+			checkNodeTemplateStatus("test", false)
+
+			By("checking Node status after update")
+			allNodes := &corev1.NodeList{}
+			err = k8sClient.List(ctx, allNodes)
+			Expect(err).ToNot(HaveOccurred())
+			for _, node := range allNodes.Items {
+				Expect(node.Labels).To(HaveKeyWithValue("test-label", "foo"))
+				Expect(node.Labels).To(HaveKeyWithValue("new-label", "bar"))
+			}
+
+			By("creating high priority NodeTemplate")
+			highPriorityNodeTemplate := &nyallocatorv1.NodeTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-high-priority",
+				},
+				Spec: nyallocatorv1.NodeTemplateSpec{
+					DryRun:   false,
+					Priority: 10,
+					Nodes:    1,
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"node-role.kubernetes.io/worker": "true",
+						},
+					},
+					Template: nyallocatorv1.NodeConfiguration{
+						Metadata: nyallocatorv1.NodeConfigurationMetadata{
+							Labels: map[string]string{
+								"test-label": "foo",
+							},
+						},
+					},
+				},
+			}
+			err = k8sClient.Create(ctx, highPriorityNodeTemplate)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("checking NodeTemplate status")
+			checkNodeTemplateStatus("test-high-priority", false)
+
+			By("checking the insufficient reason of the original NodeTemplate is changed")
+			Eventually(func(g Gomega) {
+				nt = &nyallocatorv1.NodeTemplate{}
+				err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
+				g.Expect(err).ToNot(HaveOccurred())
+				for _, condition := range nt.Status.Conditions {
+					if condition.Type == ConditionSufficient {
+						g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+						g.Expect(condition.Reason).To(Equal("HighPriorityNodeTemplateExists"))
+						break
+					}
+				}
+			}).WithTimeout(30 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
+
+			By("updating the original NodeTemplate")
+			nt = &nyallocatorv1.NodeTemplate{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
+			Expect(err).ToNot(HaveOccurred())
+			nt.Spec.Template.Metadata.Labels["new-label2"] = "baz"
+			err = k8sClient.Update(ctx, nt)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("checking NodeTemplate status after update")
+			checkNodeTemplateStatus("test", false)
+
+			By("checking Node status after update")
+			allNodes = &corev1.NodeList{}
+			err = k8sClient.List(ctx, allNodes)
+			Expect(err).ToNot(HaveOccurred())
+			for _, node := range allNodes.Items {
+				Expect(node.Labels).To(HaveKeyWithValue("test-label", "foo"))
+				Expect(node.Labels).To(HaveKeyWithValue("new-label", "bar"))
+				Expect(node.Labels).To(HaveKeyWithValue("new-label2", "baz"))
 			}
 		})
 
@@ -871,11 +1048,11 @@ func checkNodeTemplateStatus(name string, expectSufficient bool) {
 		nt := &nyallocatorv1.NodeTemplate{}
 		err := k8sClient.Get(ctx, client.ObjectKey{Name: name}, nt)
 		g.Expect(err).ToNot(HaveOccurred())
-		g.Expect(nt.Status.ReconcileInfo.Generation).To(Equal(nt.ObjectMeta.Generation))
+		g.Expect(nt.Status.ReconcileInfo.ObservedGeneration).To(Equal(nt.ObjectMeta.Generation))
 		if expectSufficient {
-			g.Expect(nt.Status.Sufficient).To(BeTrue())
+			g.Expect(isSufficient(nt)).To(BeTrue())
 		} else {
-			g.Expect(nt.Status.Sufficient).To(BeFalse())
+			g.Expect(isSufficient(nt)).To(BeFalse())
 		}
 	}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 }

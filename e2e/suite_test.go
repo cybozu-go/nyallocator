@@ -7,8 +7,10 @@ import (
 	"testing"
 	"time"
 
+	nyallocatorv1 "github.com/cybozu-go/nyallocator/api/v1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestE2e(t *testing.T) {
@@ -36,4 +38,13 @@ func kubectl(input []byte, args ...string) ([]byte, []byte, error) {
 		return stdout.Bytes(), stderr.Bytes(), fmt.Errorf("kubectl failed with %s:", err)
 	}
 	return stdout.Bytes(), stderr.Bytes(), nil
+}
+
+func isSufficient(nodeTemplate *nyallocatorv1.NodeTemplate) bool {
+	for _, condition := range nodeTemplate.Status.Conditions {
+		if condition.Type == "Sufficient" && condition.Status == metav1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }
