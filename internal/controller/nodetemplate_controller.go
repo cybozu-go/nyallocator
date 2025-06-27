@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"slices"
+	"time"
 
 	nyallocatorv1 "github.com/cybozu-go/nyallocator/api/v1"
 	"github.com/google/go-cmp/cmp"
@@ -71,6 +72,9 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+		return ctrl.Result{
+			RequeueAfter: time.Second,
+		}, nil
 	}
 
 	hasReferenceLabelNodes := corev1.NodeList{}
@@ -108,6 +112,7 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		updateStatusErr := r.updateStatus(ctx, nodeTemplate, reason, err)
 		if updateStatusErr != nil {
 			err = updateStatusErr
+			return
 		}
 		// if nodeTemplate.Status.Sufficient is not true, exponential backoff by enabling requeue.
 		if !isSufficient(nodeTemplate) {
