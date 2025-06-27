@@ -24,12 +24,14 @@ import (
 )
 
 const (
-	SpareTaintKey                 = "node.cybozu.io/spare"
-	SpareRoleLabelKey             = "node-role.kubernetes.io/spare"
-	NodeTemplateReferenceLabelKey = "nyallocator.cybozu.io/node-template"
-	ZoneLabelKey                  = "topology.kubernetes.io/zone"
-	NodeTemplateFinalizer         = "nyallocator.cybozu.io/finalizer"
-	ConditionSufficient           = "Sufficient"
+	SpareTaintKey                    = "node.cybozu.io/spare"
+	SpareRoleLabelKey                = "node-role.kubernetes.io/spare"
+	NodeTemplateReferenceLabelKey    = "nyallocator.cybozu.io/node-template"
+	OutOfManagementNodesLabelKey     = "nyallocator.cybozu.io/out-of-management"
+	OutOfManagementNodesRoleLabelKey = "node-role.kubernetes.io/out-of-management"
+	ZoneLabelKey                     = "topology.kubernetes.io/zone"
+	NodeTemplateFinalizer            = "nyallocator.cybozu.io/finalizer"
+	ConditionSufficient              = "Sufficient"
 )
 
 type InsufficientReason struct {
@@ -70,14 +72,14 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
-	existingNodes := corev1.NodeList{}
-	err = r.Client.List(ctx, &existingNodes, client.MatchingLabels{NodeTemplateReferenceLabelKey: nodeTemplate.Name})
+	hasReferenceLabelNodes := corev1.NodeList{}
+	err = r.Client.List(ctx, &hasReferenceLabelNodes, client.MatchingLabels{NodeTemplateReferenceLabelKey: nodeTemplate.Name})
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
 	if nodeTemplate.DeletionTimestamp != nil {
-		for _, node := range existingNodes.Items {
+		for _, node := range hasReferenceLabelNodes.Items {
 			// remove the reference label
 			delete(node.Labels, NodeTemplateReferenceLabelKey)
 			log.Info("node template is being deleted, removing reference label",
@@ -114,8 +116,39 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}(&statusReason)
 
+	selector, err := metav1.LabelSelectorAsSelector(nodeTemplate.Spec.Selector)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	underManagementNodes := []corev1.Node{}
+	outOfManagementNodes := []corev1.Node{}
+	for _, node := range hasReferenceLabelNodes.Items {
+		if selector.Matches(labels.Set(node.Labels)) {
+			underManagementNodes = append(underManagementNodes, node)
+		} else {
+			outOfManagementNodes = append(outOfManagementNodes, node)
+		}
+	}
+	if len(outOfManagementNodes) > 0 {
+		for _, node := range outOfManagementNodes {
+			node.Labels[OutOfManagementNodesRoleLabelKey] = "true"
+			node.Labels[OutOfManagementNodesLabelKey] = nodeTemplate.Name
+			delete(node.Labels, NodeTemplateReferenceLabelKey)
+			err := r.Client.Update(ctx, &node)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+			log.Info("node does not match the selector,removing reference label and adding out-of-management labels",
+				"node", node.Name,
+				"nodetemplate", nodeTemplate.Name,
+			)
+		}
+		return ctrl.Result{}, nil
+	}
+
 	// sync existing nodes
-	for _, node := range existingNodes.Items {
+	for _, node := range underManagementNodes {
 		nodeOriginal := node.DeepCopy()
 		r.reflectNodeConfiguration(&node, nodeTemplate)
 		if !reflect.DeepEqual(*nodeOriginal, node) {
@@ -167,10 +200,6 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	for _, node := range allNode.Items {
 		if _, ok := node.Labels[NodeTemplateReferenceLabelKey]; !ok && node.Labels[SpareRoleLabelKey] == "true" {
-			selector, err := metav1.LabelSelectorAsSelector(nodeTemplate.Spec.Selector)
-			if err != nil {
-				return ctrl.Result{}, err
-			}
 			if selector.Matches(labels.Set(node.Labels)) {
 				spareNodes[node.Name] = node
 			}
@@ -178,13 +207,13 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	countNodeByZone := make(map[string]int)
-	for _, n := range existingNodes.Items {
+	for _, n := range underManagementNodes {
 		if zone, ok := n.Labels[ZoneLabelKey]; ok {
 			countNodeByZone[zone]++
 		}
 	}
 
-	for i := len(existingNodes.Items); i < nodeTemplate.Spec.Nodes; i++ {
+	for i := len(underManagementNodes); i < nodeTemplate.Spec.Nodes; i++ {
 		if len(spareNodes) == 0 {
 			log.Info("no spare nodes found", "nodetemplate", nodeTemplate.Name)
 			statusReason.NoSpareNodesFound = true
@@ -281,9 +310,20 @@ func (r *NodeTemplateReconciler) updateStatus(ctx context.Context, nodeTemplate 
 	if err != nil {
 		return err
 	}
+	selector, err := metav1.LabelSelectorAsSelector(nodeTemplate.Spec.Selector)
+	if err != nil {
+		return err
+	}
+	underManagementNodes := []corev1.Node{}
+	for _, node := range nodes.Items {
+		if selector.Matches(labels.Set(node.Labels)) {
+			underManagementNodes = append(underManagementNodes, node)
+		}
+	}
+
 	nodeTemplate.Status.ReconcileInfo.ObservedGeneration = nodeTemplate.Generation
 
-	nodeTemplate.Status.CurrentNodes = len(nodes.Items)
+	nodeTemplate.Status.CurrentNodes = len(underManagementNodes)
 
 	conditionSufficient := metav1.Condition{
 		Type:               ConditionSufficient,

@@ -927,6 +927,110 @@ var _ = Describe("NodeTemplate Controller", func() {
 			Expect(allocatedNode.Items[0].Name).To(Equal("node9"), "should have selected node9 based on the label selector")
 		})
 
+		It("should remove reference label from nodes when selector of node template is unmatch", func() {
+			By("creating Node")
+			nodes := []corev1.Node{
+				newNode("node1").withLabel(map[string]string{"node-role.kubernetes.io/worker": "true"}).withSpareTaint().build(),
+				newNode("node2").withLabel(map[string]string{"node-role.kubernetes.io/worker": "true"}).withSpareTaint().build(),
+				newNode("node3").withLabel(map[string]string{"node-role.kubernetes.io/worker": "true"}).withSpareTaint().build(),
+				newNode("node4").withLabel(map[string]string{"node-role.kubernetes.io/worker2": "true"}).withSpareTaint().build(),
+				newNode("node5").withLabel(map[string]string{"node-role.kubernetes.io/worker2": "true"}).withSpareTaint().build(),
+				newNode("node6").withLabel(map[string]string{"node-role.kubernetes.io/worker2": "true"}).withSpareTaint().build(),
+			}
+			for _, node := range nodes {
+				err := k8sClient.Create(ctx, &node)
+				Expect(err).ToNot(HaveOccurred())
+			}
+
+			By("creating NodeTemplate")
+			nodeTemplate := &nyallocatorv1.NodeTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test",
+				},
+				Spec: nyallocatorv1.NodeTemplateSpec{
+					DryRun:   false,
+					Priority: 1,
+					Nodes:    3,
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"node-role.kubernetes.io/worker": "true",
+						},
+					},
+					Template: nyallocatorv1.NodeConfiguration{
+						Metadata: nyallocatorv1.NodeConfigurationMetadata{
+							Labels: map[string]string{
+								"test-label": "foo",
+							},
+						},
+					},
+				},
+			}
+			err := k8sClient.Create(ctx, nodeTemplate)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("checking NodeTemplate status")
+			checkNodeTemplateStatus("test", true)
+
+			By("changing NodeTemplate selector")
+			nodeTemplate = &nyallocatorv1.NodeTemplate{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nodeTemplate)
+			Expect(err).ToNot(HaveOccurred())
+			nodeTemplate.Spec.Selector = &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"node-role.kubernetes.io/worker2": "true",
+				},
+			}
+			err = k8sClient.Update(ctx, nodeTemplate)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("checking NodeTemplate status after update")
+			checkNodeTemplateStatus("test", true)
+
+			By("checking nodes has no reference labels and out-of-management labels")
+			workerNodes := &corev1.NodeList{}
+			err = k8sClient.List(ctx, workerNodes, client.MatchingLabels{"node-role.kubernetes.io/worker": "true"})
+			Expect(err).ToNot(HaveOccurred())
+			for _, node := range workerNodes.Items {
+				Expect(node.Labels).NotTo(HaveKeyWithValue("nyallocator.cybozu.io/node-template", "test"))
+				Expect(node.Labels).To(HaveKeyWithValue("nyallocator.cybozu.io/out-of-management", "test"))
+				Expect(node.Labels).To(HaveKeyWithValue("node-role.kubernetes.io/out-of-management", "true"))
+			}
+
+			By("checking new selected nodes are configured correctly")
+			worker2Nodes := &corev1.NodeList{}
+			err = k8sClient.List(ctx, worker2Nodes, client.MatchingLabels{"node-role.kubernetes.io/worker2": "true"})
+			Expect(err).ToNot(HaveOccurred())
+			for _, node := range worker2Nodes.Items {
+				Expect(node.Labels).To(HaveKeyWithValue("nyallocator.cybozu.io/node-template", "test"))
+				Expect(node.Labels).To(HaveKeyWithValue("test-label", "foo"))
+			}
+
+			By("changing selector to unexisting nodes")
+			nodeTemplate = &nyallocatorv1.NodeTemplate{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nodeTemplate)
+			Expect(err).ToNot(HaveOccurred())
+			nodeTemplate.Spec.Selector = &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"node-role.kubernetes.io/worker3": "true",
+				},
+			}
+			err = k8sClient.Update(ctx, nodeTemplate)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("checking NodeTemplate status after update")
+			checkNodeTemplateStatus("test", false)
+			nodeTemplate = &nyallocatorv1.NodeTemplate{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nodeTemplate)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(nodeTemplate.Status.CurrentNodes).To(Equal(0))
+			for _, condition := range nodeTemplate.Status.Conditions {
+				if condition.Type == ConditionSufficient {
+					Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+					Expect(condition.Reason).To(Equal("NoSpareNodesFound"))
+				}
+			}
+		})
+
 		It("should remove reference label from nodes when NodeTemplate is deleted", func() {
 			By("creating Node")
 			nodes := []corev1.Node{
