@@ -4,7 +4,6 @@ import (
 	"context"
 	"reflect"
 	"slices"
-	"time"
 
 	nyallocatorv1 "github.com/cybozu-go/nyallocator/api/v1"
 	"github.com/google/go-cmp/cmp"
@@ -108,10 +107,10 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		if updateStatusErr != nil {
 			err = updateStatusErr
 		}
-		// if nodeTemplate.Status.Sufficient is not true, requeue after 1 second
+		// if nodeTemplate.Status.Sufficient is not true, exponential backoff by enabling requeue.
 		if !isSufficient(nodeTemplate) {
 			result = ctrl.Result{
-				RequeueAfter: time.Second * 1,
+				Requeue: true,
 			}
 		}
 	}(&statusReason)
