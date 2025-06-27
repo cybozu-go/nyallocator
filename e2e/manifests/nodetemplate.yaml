@@ -38,7 +38,7 @@ spec:
     matchExpressions:
       - {key: node-role.kubernetes.io/control-plane, operator: DoesNotExist}
       - {key: cke.cybozu.com/role, operator: In, values: [ss]}
-  nodes: 2
+  nodes: 4
   template:
     spec:
       taints:

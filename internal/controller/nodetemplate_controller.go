@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -40,7 +41,8 @@ type InsufficientReason struct {
 
 type NodeTemplateReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme             *runtime.Scheme
+	RequeueRateLimiter workqueue.TypedRateLimiter[ctrl.Request]
 }
 type NodeReconciler struct {
 	client.Client
@@ -109,9 +111,12 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 		// if nodeTemplate.Status.Sufficient is not true, exponential backoff by enabling requeue.
 		if !isSufficient(nodeTemplate) {
+			after := r.RequeueRateLimiter.When(req)
 			result = ctrl.Result{
-				Requeue: true,
+				RequeueAfter: after,
 			}
+		} else {
+			r.RequeueRateLimiter.Forget(req)
 		}
 	}(&statusReason)
 
