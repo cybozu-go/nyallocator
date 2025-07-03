@@ -456,6 +456,9 @@ var _ = Describe("NodeTemplate Controller", func() {
 				g.Expect(node.Labels).To(HaveKeyWithValue("nyallocator.cybozu.io/node-template", "test"))
 			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 
+			By("checking NodeTemplate status after adding new node")
+			checkNodeTemplateStatus("test", true)
+
 			By("checking metrics are exposed correctly")
 			resp, err = http.Get("http://localhost:8080/metrics")
 			Expect(err).ToNot(HaveOccurred())

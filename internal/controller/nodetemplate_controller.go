@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"math"
 	"reflect"
 	"slices"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -18,6 +20,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -25,14 +28,15 @@ import (
 )
 
 const (
-	SpareTaintKey                    = "node.cybozu.io/spare"
-	SpareRoleLabelKey                = "node-role.kubernetes.io/spare"
-	NodeTemplateReferenceLabelKey    = "nyallocator.cybozu.io/node-template"
-	OutOfManagementNodesLabelKey     = "nyallocator.cybozu.io/out-of-management"
-	OutOfManagementNodesRoleLabelKey = "node-role.kubernetes.io/out-of-management"
-	ZoneLabelKey                     = "topology.kubernetes.io/zone"
-	NodeTemplateFinalizer            = "nyallocator.cybozu.io/finalizer"
-	ConditionSufficient              = "Sufficient"
+	SpareTaintKey                       = "node.cybozu.io/spare"
+	SpareRoleLabelKey                   = "node-role.kubernetes.io/spare"
+	NodeTemplateReferenceLabelKey       = "nyallocator.cybozu.io/node-template"
+	OutOfManagementNodesLabelKey        = "nyallocator.cybozu.io/out-of-management"
+	OutOfManagementNodesRoleLabelKey    = "node-role.kubernetes.io/out-of-management"
+	ZoneLabelKey                        = "topology.kubernetes.io/zone"
+	NodeTemplateFinalizer               = "nyallocator.cybozu.io/finalizer"
+	ConditionSufficient                 = "Sufficient"
+	ConditionSufficientReconcileSuccess = "ReconcileSuccess"
 )
 
 type InsufficientReason struct {
@@ -66,8 +70,8 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// add finalizer if not exists
-	if nodeTemplate.DeletionTimestamp == nil && nodeTemplate.Finalizers == nil {
-		nodeTemplate.Finalizers = []string{NodeTemplateFinalizer}
+	if nodeTemplate.DeletionTimestamp == nil && controllerutil.ContainsFinalizer(nodeTemplate, NodeTemplateFinalizer) == false {
+		controllerutil.AddFinalizer(nodeTemplate, NodeTemplateFinalizer)
 		err = r.Update(ctx, nodeTemplate)
 		if err != nil {
 			return ctrl.Result{}, err
@@ -96,15 +100,18 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 				return ctrl.Result{}, err
 			}
 		}
-		// remove finalizer
-		nodeTemplate.Finalizers = nil
-		log.Info("removing finalizer", "nodetemplate", nodeTemplate.Name, "finalizer", nodeTemplate.Finalizers)
-		err = r.Update(ctx, nodeTemplate)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
 		// remove metrics
 		r.removeMetrics(nodeTemplate)
+
+		// remove finalizer
+		updated := controllerutil.RemoveFinalizer(nodeTemplate, NodeTemplateFinalizer)
+		if updated {
+			log.Info("removing finalizer", "nodetemplate", nodeTemplate.Name, "finalizer", nodeTemplate.Finalizers)
+			err = r.Update(ctx, nodeTemplate)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -180,6 +187,10 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
+	if isSufficient(nodeTemplate) {
+		return ctrl.Result{}, err
+	}
+
 	// if there are NodeTemplates that is lack of nodes with higher priority, skip ensuring of nodes.
 	nodeTemplates := nyallocatorv1.NodeTemplateList{}
 	err = r.Client.List(ctx, &nodeTemplates)
@@ -191,8 +202,6 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			log.Info("skip ensuring node, because there is a NodeTemplate with higher priority that is not sufficient",
 				"nodetemplate", nodeTemplate.Name,
 				"prior", nt.Name,
-				"current", nt.Status.CurrentNodes,
-				"desired", nt.Spec.Nodes,
 			)
 			statusReason.HighPriorityNodeTemplateExists = true
 			return ctrl.Result{}, nil
@@ -259,10 +268,10 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 }
 
 func (r *NodeTemplateReconciler) reflectNodeConfiguration(node *corev1.Node, nodeTemplate *nyallocatorv1.NodeTemplate) {
-	if nodeTemplate.Spec.Template.Metadata.Labels != nil && node.Labels == nil {
+	if node.Labels == nil {
 		node.Labels = make(map[string]string)
 	}
-	if nodeTemplate.Spec.Template.Metadata.Annotations != nil && node.Annotations == nil {
+	if node.Annotations == nil {
 		node.Annotations = make(map[string]string)
 	}
 	// remove spare taint and label, and add node template reference label
@@ -296,7 +305,7 @@ L:
 }
 
 func selectNodes(spareNodes map[string]corev1.Node, zoneCount map[string]int) corev1.Node {
-	maxCountPerZone := 100
+	maxCountPerZone := math.MaxInt
 	maxScore := -1
 	maxScoreNode := ""
 	for k, n := range spareNodes {
@@ -304,7 +313,7 @@ func selectNodes(spareNodes map[string]corev1.Node, zoneCount map[string]int) co
 		if zone, ok := n.Labels[ZoneLabelKey]; ok {
 			zoneCountScore = maxCountPerZone - zoneCount[zone]
 		}
-		score := zoneCountScore * 10
+		score := zoneCountScore
 		if score > maxScore {
 			maxScore = score
 			maxScoreNode = k
@@ -335,8 +344,7 @@ func (r *NodeTemplateReconciler) updateStatus(ctx context.Context, nodeTemplate 
 	nodeTemplate.Status.CurrentNodes = len(underManagementNodes)
 
 	conditionSufficient := metav1.Condition{
-		Type:               ConditionSufficient,
-		LastTransitionTime: metav1.Now(),
+		Type: ConditionSufficient,
 	}
 
 	if nodeTemplate.Status.CurrentNodes < nodeTemplate.Spec.Nodes {
@@ -357,8 +365,7 @@ func (r *NodeTemplateReconciler) updateStatus(ctx context.Context, nodeTemplate 
 		conditionSufficient.Message = "Current nodes are sufficient"
 	}
 	conditionReconcileSuccess := metav1.Condition{
-		Type:               "ReconcileSuccess",
-		LastTransitionTime: metav1.Now(),
+		Type: ConditionSufficientReconcileSuccess,
 	}
 	if reconcileError != nil {
 		conditionReconcileSuccess.Status = metav1.ConditionFalse
@@ -370,10 +377,8 @@ func (r *NodeTemplateReconciler) updateStatus(ctx context.Context, nodeTemplate 
 		conditionReconcileSuccess.Message = "Reconcile succeeded"
 	}
 
-	nodeTemplate.Status.Conditions = []metav1.Condition{
-		conditionSufficient,
-		conditionReconcileSuccess,
-	}
+	meta.SetStatusCondition(&nodeTemplate.Status.Conditions, conditionSufficient)
+	meta.SetStatusCondition(&nodeTemplate.Status.Conditions, conditionReconcileSuccess)
 
 	r.updateMetrics(nodeTemplate)
 	err = r.Client.Status().Update(ctx, nodeTemplate)
