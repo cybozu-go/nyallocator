@@ -1,0 +1,9 @@
+apiVersion: nyallocator.cybozu.io/v1
+kind: NodeTemplate
+metadata:
+  labels:
+    app.kubernetes.io/name: nyallocator
+    app.kubernetes.io/managed-by: kustomize
+  name: nodetemplate-sample
+spec:
+  # TODO(user): Add fields here

@@ -1,0 +1,64 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: deny-edit-nyallocator-label
+spec:
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["nodes"]
+        operations: ["UPDATE"]
+  validations:
+    - expression: |
+        request.userInfo.username == "system:serviceaccount:nyallocator-system:nyallocator-controller-manager" ||
+        object.metadata.labels["nyallocator.cybozu.io/node-template"] == oldObject.metadata.labels["nyallocator.cybozu.io/node-template"]
+      message: |
+        Only the controller can change or remove the "nyallocator.cybozu.io/node-template" label on Node.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: deny-edit-nyallocator-label-binding
+spec:
+  policyName: deny-edit-nyallocator-label
+  validationActions: ["Deny"]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: deny-nyallocator-reserved-key
+spec:
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["nyallocator.cybozu.io"]
+        apiVersions: ["v1"]
+        resources: ["nodetemplates"]
+        operations: ["CREATE", "UPDATE"]
+  validations:
+    - expression: |
+        (
+          !has(object.spec.template) ||
+          !has(object.spec.template.metadata) ||
+          !has(object.spec.template.metadata.labels) ||
+            (
+              !object.spec.template.metadata.labels.exists(l, l == "nyallocator.cybozu.io/node-template") &&
+              !object.spec.template.metadata.labels.exists(l, l == "node-role.kubernetes.io/spare")
+            )
+        ) &&
+        (
+          !has(object.spec.template) ||
+          !has(object.spec.template.spec) ||
+          !has(object.spec.template.spec.taints) ||
+          !object.spec.template.spec.taints.exists(t, t.key == "nyallocator.cybozu.io/spare")
+        )
+      message: |
+        Cannot use nyallocator system reserved taint and labels in NodeTemplate.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: deny-nyallocator-reserved-key-binding
+spec:
+  policyName: deny-nyallocator-reserved-key
+  validationActions: ["Deny"]

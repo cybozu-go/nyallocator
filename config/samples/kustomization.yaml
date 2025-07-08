@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- nyallocator_v1_nodetemplate.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples
