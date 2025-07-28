@@ -97,16 +97,22 @@ var _ = Describe("nyallocator e2e test", func() {
 			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_current_nodes{nodetemplate="control-plane"} 3`))
 			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_desired_nodes{nodetemplate="control-plane"} 3`))
 			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_sufficient_nodes{nodetemplate="control-plane"} 1`))
+			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_spare_nodes{nodetemplate="control-plane"} 0`))
+			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_reconcile_success{nodetemplate="control-plane"} 1`))
 
 			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_current_nodes{nodetemplate="cs"} 2`))
 			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_desired_nodes{nodetemplate="cs"} 2`))
 			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_sufficient_nodes{nodetemplate="cs"} 1`))
+			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_spare_nodes{nodetemplate="cs"} 1`))
+			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_reconcile_success{nodetemplate="cs"} 1`))
 
 			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_current_nodes{nodetemplate="ss"} 2`))
 			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_desired_nodes{nodetemplate="ss"} 2`))
 			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_sufficient_nodes{nodetemplate="ss"} 1`))
-		}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
+			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_spare_nodes{nodetemplate="ss"} 1`))
+			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_reconcile_success{nodetemplate="ss"} 1`))
 
+		}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 	})
 
 	It("should allocate node when templates are updated", func() {

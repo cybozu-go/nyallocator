@@ -150,6 +150,8 @@ var _ = Describe("NodeTemplate Controller", func() {
 			Expect(string(body)).To(ContainSubstring("nyallocator_desired_nodes{nodetemplate=\"test\"} 2"))
 			Expect(string(body)).To(ContainSubstring("nyallocator_current_nodes{nodetemplate=\"test\"} 2"))
 			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient_nodes{nodetemplate=\"test\"} 1"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_spare_nodes{nodetemplate=\"test\"} 1"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_reconcile_success{nodetemplate=\"test\"} 1"))
 		})
 
 		It("should not allocate nodes when dry run is enabled", func() {
@@ -343,6 +345,10 @@ var _ = Describe("NodeTemplate Controller", func() {
 			Expect(string(body)).To(ContainSubstring("nyallocator_current_nodes{nodetemplate=\"test2\"} 2"))
 			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient_nodes{nodetemplate=\"test1\"} 0"))
 			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient_nodes{nodetemplate=\"test2\"} 1"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_spare_nodes{nodetemplate=\"test1\"} 0"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_spare_nodes{nodetemplate=\"test2\"} 0"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_reconcile_success{nodetemplate=\"test1\"} 1"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_reconcile_success{nodetemplate=\"test2\"} 1"))
 
 			By("adding a new spare node")
 			newNode := newNode("node4").withLabel(map[string]string{"node-role.kubernetes.io/worker": "true"}).withSpareTaint().build()
@@ -372,6 +378,10 @@ var _ = Describe("NodeTemplate Controller", func() {
 			Expect(string(body)).To(ContainSubstring("nyallocator_current_nodes{nodetemplate=\"test2\"} 2"))
 			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient_nodes{nodetemplate=\"test1\"} 1"))
 			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient_nodes{nodetemplate=\"test2\"} 1"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_spare_nodes{nodetemplate=\"test1\"} 0"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_spare_nodes{nodetemplate=\"test2\"} 0"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_reconcile_success{nodetemplate=\"test1\"} 1"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_reconcile_success{nodetemplate=\"test2\"} 1"))
 		})
 
 		It("should replace nodes when node is deleted", func() {
@@ -442,6 +452,8 @@ var _ = Describe("NodeTemplate Controller", func() {
 			Expect(string(body)).To(ContainSubstring("nyallocator_desired_nodes{nodetemplate=\"test\"} 3"))
 			Expect(string(body)).To(ContainSubstring("nyallocator_current_nodes{nodetemplate=\"test\"} 2"))
 			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient_nodes{nodetemplate=\"test\"} 0"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_spare_nodes{nodetemplate=\"test\"} 0"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_reconcile_success{nodetemplate=\"test\"} 1"))
 
 			By("adding a new spare node")
 			newNode := newNode("node4").withLabel(map[string]string{"node-role.kubernetes.io/worker": "true"}).withSpareTaint().build()
@@ -468,6 +480,8 @@ var _ = Describe("NodeTemplate Controller", func() {
 			Expect(string(body)).To(ContainSubstring("nyallocator_desired_nodes{nodetemplate=\"test\"} 3"))
 			Expect(string(body)).To(ContainSubstring("nyallocator_current_nodes{nodetemplate=\"test\"} 3"))
 			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient_nodes{nodetemplate=\"test\"} 1"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_spare_nodes{nodetemplate=\"test\"} 0"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_reconcile_success{nodetemplate=\"test\"} 1"))
 		})
 
 		It("should update nodes when the NodeTemplate is updated", func() {
@@ -616,6 +630,46 @@ var _ = Describe("NodeTemplate Controller", func() {
 					Effect: corev1.TaintEffectNoSchedule,
 				}), "node should have the new taint node:"+node.Name)
 			}
+
+			By("checking metrics are exposed correctly")
+			resp, err := http.Get("http://localhost:8080/metrics")
+			Expect(err).ToNot(HaveOccurred())
+			defer resp.Body.Close()
+			body, err := io.ReadAll(resp.Body)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(string(body)).To(ContainSubstring("nyallocator_reconcile_success{nodetemplate=\"test\"} 1"))
+
+			By("changing the NodeTemplate to invalid configuration")
+			nodeTemplate = &nyallocatorv1.NodeTemplate{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nodeTemplate)
+			Expect(err).ToNot(HaveOccurred())
+			nodeTemplate.Spec.Template.Metadata.Labels["test-label?"] = "invalid"
+			err = k8sClient.Update(ctx, nodeTemplate)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("checking NodeTemplate status after invalid update")
+			Expect(err).ToNot(HaveOccurred())
+			Eventually(func(g Gomega) {
+				nt := &nyallocatorv1.NodeTemplate{}
+				err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
+				g.Expect(err).ToNot(HaveOccurred())
+				for _, condition := range nt.Status.Conditions {
+					if condition.Type == ConditionReconcileSuccess {
+						g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+						g.Expect(condition.Reason).To(Equal("ReconcileError"))
+						break
+					}
+				}
+			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
+
+			By("checking metrics are exposed correctly")
+			resp, err = http.Get("http://localhost:8080/metrics")
+			Expect(err).ToNot(HaveOccurred())
+			defer resp.Body.Close()
+			body, err = io.ReadAll(resp.Body)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(string(body)).To(ContainSubstring("nyallocator_reconcile_success{nodetemplate=\"test\"} 0"))
+
 		})
 
 		It("should update nodes even when the allocation is failed", func() {
@@ -1112,6 +1166,8 @@ var _ = Describe("NodeTemplate Controller", func() {
 			Expect(string(body)).NotTo(ContainSubstring("nyallocator_desired_nodes{nodetemplate=\"test\"}"))
 			Expect(string(body)).NotTo(ContainSubstring("nyallocator_current_nodes{nodetemplate=\"test\"}"))
 			Expect(string(body)).NotTo(ContainSubstring("nyallocator_sufficient_nodes{nodetemplate=\"test\"}"))
+			Expect(string(body)).NotTo(ContainSubstring("nyallocator_spare_nodes{nodetemplate=\"test\"}"))
+			Expect(string(body)).NotTo(ContainSubstring("nyallocator_reconcile_success{nodetemplate=\"test\"}"))
 		})
 	})
 })
