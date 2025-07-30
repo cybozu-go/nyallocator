@@ -28,15 +28,15 @@ import (
 )
 
 const (
-	SpareTaintKey                       = "node.cybozu.io/spare"
-	SpareRoleLabelKey                   = "node-role.kubernetes.io/spare"
-	NodeTemplateReferenceLabelKey       = "nyallocator.cybozu.io/node-template"
-	OutOfManagementNodesLabelKey        = "nyallocator.cybozu.io/out-of-management"
-	OutOfManagementNodesRoleLabelKey    = "node-role.kubernetes.io/out-of-management"
-	ZoneLabelKey                        = "topology.kubernetes.io/zone"
-	NodeTemplateFinalizer               = "nyallocator.cybozu.io/finalizer"
-	ConditionSufficient                 = "Sufficient"
-	ConditionSufficientReconcileSuccess = "ReconcileSuccess"
+	SpareTaintKey                    = "node.cybozu.io/spare"
+	SpareRoleLabelKey                = "node-role.kubernetes.io/spare"
+	NodeTemplateReferenceLabelKey    = "nyallocator.cybozu.io/node-template"
+	OutOfManagementNodesLabelKey     = "nyallocator.cybozu.io/out-of-management"
+	OutOfManagementNodesRoleLabelKey = "node-role.kubernetes.io/out-of-management"
+	ZoneLabelKey                     = "topology.kubernetes.io/zone"
+	NodeTemplateFinalizer            = "nyallocator.cybozu.io/finalizer"
+	ConditionSufficient              = "Sufficient"
+	ConditionReconcileSuccess        = "ReconcileSuccess"
 )
 
 type InsufficientReason struct {
@@ -209,14 +209,14 @@ func (r *NodeTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// allocate new nodes
-	allNode := corev1.NodeList{}
+	allNodes := corev1.NodeList{}
 	spareNodes := map[string]corev1.Node{}
-	err = r.Client.List(ctx, &allNode)
+	err = r.Client.List(ctx, &allNodes)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	for _, node := range allNode.Items {
+	for _, node := range allNodes.Items {
 		if _, ok := node.Labels[NodeTemplateReferenceLabelKey]; !ok && node.Labels[SpareRoleLabelKey] == "true" {
 			if selector.Matches(labels.Set(node.Labels)) {
 				spareNodes[node.Name] = node
@@ -365,7 +365,7 @@ func (r *NodeTemplateReconciler) updateStatus(ctx context.Context, nodeTemplate 
 		conditionSufficient.Message = "Current nodes are sufficient"
 	}
 	conditionReconcileSuccess := metav1.Condition{
-		Type: ConditionSufficientReconcileSuccess,
+		Type: ConditionReconcileSuccess,
 	}
 	if reconcileError != nil {
 		conditionReconcileSuccess.Status = metav1.ConditionFalse
@@ -396,12 +396,21 @@ func (r *NodeTemplateReconciler) updateMetrics(nodeTemplate *nyallocatorv1.NodeT
 	}
 	CurrentNodesVec.WithLabelValues(nodeTemplate.Name).Set(float64(nodeTemplate.Status.CurrentNodes))
 	DesiredNodesVec.WithLabelValues(nodeTemplate.Name).Set(float64(nodeTemplate.Spec.Nodes))
+	for _, condition := range nodeTemplate.Status.Conditions {
+		if condition.Type == ConditionReconcileSuccess && condition.Status == metav1.ConditionTrue {
+			ReconcileSuccessVec.WithLabelValues(nodeTemplate.Name).Set(1)
+		} else if condition.Type == ConditionReconcileSuccess && condition.Status == metav1.ConditionFalse {
+			ReconcileSuccessVec.WithLabelValues(nodeTemplate.Name).Set(0)
+		}
+	}
 }
 
 func (r *NodeTemplateReconciler) removeMetrics(nodeTemplate *nyallocatorv1.NodeTemplate) {
 	SufficientNodesVec.DeleteLabelValues(nodeTemplate.Name)
 	CurrentNodesVec.DeleteLabelValues(nodeTemplate.Name)
 	DesiredNodesVec.DeleteLabelValues(nodeTemplate.Name)
+	SpareNodesVec.DeleteLabelValues(nodeTemplate.Name)
+	ReconcileSuccessVec.DeleteLabelValues(nodeTemplate.Name)
 }
 
 func isSufficient(nodeTemplate *nyallocatorv1.NodeTemplate) bool {

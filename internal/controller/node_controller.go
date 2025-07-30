@@ -3,7 +3,10 @@ package controller
 import (
 	"context"
 
+	nyallocatorv1 "github.com/cybozu-go/nyallocator/api/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -33,7 +36,40 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			}
 		}
 	}
+	err = r.updateMetrics(ctx)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 	return ctrl.Result{}, nil
+}
+
+func (r *NodeReconciler) updateMetrics(ctx context.Context) error {
+	nodeTemplates := &nyallocatorv1.NodeTemplateList{}
+	err := r.Client.List(ctx, nodeTemplates)
+	if err != nil {
+		return err
+	}
+	for _, nodeTemplate := range nodeTemplates.Items {
+		selector, err := metav1.LabelSelectorAsSelector(nodeTemplate.Spec.Selector)
+		if err != nil {
+			return err
+		}
+		allNodes := corev1.NodeList{}
+		err = r.Client.List(ctx, &allNodes)
+		if err != nil {
+			return err
+		}
+		spareNodes := []corev1.Node{}
+		for _, node := range allNodes.Items {
+			if _, ok := node.Labels[NodeTemplateReferenceLabelKey]; !ok && node.Labels[SpareRoleLabelKey] == "true" {
+				if selector.Matches(labels.Set(node.Labels)) {
+					spareNodes = append(spareNodes, node)
+				}
+			}
+		}
+		SpareNodesVec.WithLabelValues(nodeTemplate.Name).Set(float64(len(spareNodes)))
+	}
+	return nil
 }
 
 func (r *NodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
