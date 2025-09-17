@@ -12,7 +12,7 @@ spec:
   validations:
     - expression: |
         request.userInfo.username == "system:serviceaccount:nyallocator-system:nyallocator-controller-manager" ||
-        object.metadata.labels["nyallocator.cybozu.io/node-template"] == oldObject.metadata.labels["nyallocator.cybozu.io/node-template"]
+        object.metadata.?labels[?'nyallocator.cybozu.io/node-template'] == oldObject.metadata.?labels[?'nyallocator.cybozu.io/node-template']
       message: |
         Only the controller can change or remove the "nyallocator.cybozu.io/node-template" label on Node.
 ---

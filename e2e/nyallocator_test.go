@@ -195,6 +195,46 @@ var _ = Describe("nyallocator e2e test", func() {
 		}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 	})
 
+	It("should success delete NodeTemplate", func() {
+		By("deleting a NodeTemplate")
+		_, stderr, err := kubectl(nil, "delete", "nodetemplates", "ss")
+		Expect(err).NotTo(HaveOccurred(), stderr)
+
+		By("checking nodes")
+		Eventually(func(g Gomega) {
+			ss := &corev1.NodeList{}
+			out, stderr, err := kubectl(nil, "get", "nodes", "-l", "cke.cybozu.com/role=ss", "-o", "yaml")
+			g.Expect(err).NotTo(HaveOccurred(), stderr)
+			err = yaml.Unmarshal(out, ss)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(ss.Items).To(HaveLen(3))
+			for _, n := range ss.Items {
+				g.Expect(n.Labels).NotTo(HaveKey("nyallocator.cybozu.io/node-template"))
+			}
+		}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
+
+		By("checking NodeTemplate")
+		_, stderr, err = kubectl(nil, "get", "nodetemplates", "ss")
+		Expect(err).To(HaveOccurred(), stderr)
+		Expect(string(stderr)).To(ContainSubstring("not found"))
+
+	})
+
+	It("should allow edit of non-reference labels", func() {
+		By("getting a node without reference label")
+		cs := &corev1.NodeList{}
+		out, stderr, err := kubectl(nil, "get", "nodes", "-l", `!nyallocator.cybozu.io/node-template`, "-o", "yaml")
+		Expect(err).NotTo(HaveOccurred(), string(stderr))
+		err = yaml.Unmarshal(out, cs)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cs.Items).NotTo(BeEmpty())
+		Expect(cs.Items[0].Labels).NotTo(HaveKey("nyallocator.cybozu.io/node-template"))
+
+		By("editing a node label")
+		_, _, err = kubectl(nil, "label", "node", cs.Items[0].Name, "foo=bar")
+		Expect(err).NotTo(HaveOccurred())
+	})
+
 	It("should not allow edit of reference labels", func() {
 		By("getting a node")
 		cs := &corev1.NodeList{}
@@ -296,30 +336,5 @@ var _ = Describe("nyallocator e2e test", func() {
 		_, stderr, err = kubectl(jsonData, "apply", "-f", "-")
 		Expect(err).To(HaveOccurred())
 		Expect(string(stderr)).To(ContainSubstring("ValidatingAdmissionPolicy"))
-	})
-
-	It("should success delete NodeTemplate", func() {
-		By("deleting a NodeTemplate")
-		_, stderr, err := kubectl(nil, "delete", "nodetemplates", "ss")
-		Expect(err).NotTo(HaveOccurred(), stderr)
-
-		By("checking nodes")
-		Eventually(func(g Gomega) {
-			ss := &corev1.NodeList{}
-			out, stderr, err := kubectl(nil, "get", "nodes", "-l", "cke.cybozu.com/role=ss", "-o", "yaml")
-			g.Expect(err).NotTo(HaveOccurred(), stderr)
-			err = yaml.Unmarshal(out, ss)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(ss.Items).To(HaveLen(3))
-			for _, n := range ss.Items {
-				g.Expect(n.Labels).NotTo(HaveKey("nyallocator.cybozu.io/node-template"))
-			}
-		}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
-
-		By("checking NodeTemplate")
-		_, stderr, err = kubectl(nil, "get", "nodetemplates", "ss")
-		Expect(err).To(HaveOccurred(), stderr)
-		Expect(string(stderr)).To(ContainSubstring("not found"))
-
 	})
 })
