@@ -203,7 +203,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			L:
 				for _, node := range nodes.Items {
 					for _, taint := range node.Spec.Taints {
-						if taint.Key == "node.cybozu.io/spare" {
+						if taint.Key == SpareTaintKey {
 							continue L
 						}
 					}
@@ -843,7 +843,11 @@ var _ = Describe("NodeTemplate Controller", func() {
 			nodeToUpdate := &corev1.Node{}
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "node1"}, nodeToUpdate)
 			Expect(err).ToNot(HaveOccurred())
-			nodeToUpdate.Labels["test-label"] = "updated"
+			nodeToUpdate.Spec.Taints = append(nodeToUpdate.Spec.Taints, corev1.Taint{
+				Key:    "extra-taint",
+				Value:  "true",
+				Effect: corev1.TaintEffectNoSchedule,
+			})
 			err = k8sClient.Update(ctx, nodeToUpdate)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -852,7 +856,11 @@ var _ = Describe("NodeTemplate Controller", func() {
 				updatedNode := &corev1.Node{}
 				err := k8sClient.Get(ctx, client.ObjectKey{Name: "node1"}, updatedNode)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(updatedNode.Labels).To(HaveKeyWithValue("test-label", "foo"))
+				g.Expect(updatedNode.Spec.Taints).To(ContainElement(corev1.Taint{
+					Key:    "extra-taint",
+					Value:  "true",
+					Effect: corev1.TaintEffectNoSchedule,
+				}))
 			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 		})
 
@@ -1190,7 +1198,7 @@ func newNode(name string) NodeBuilder {
 
 func (n NodeBuilder) withSpareTaint() NodeBuilder {
 	n.Spec.Taints = append(n.Spec.Taints, corev1.Taint{
-		Key:    "node.cybozu.io/spare",
+		Key:    SpareTaintKey,
 		Value:  "true",
 		Effect: corev1.TaintEffectNoSchedule,
 	})

@@ -444,9 +444,9 @@ func (r *NodeTemplateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			builder.WithPredicates(
 				predicate.And(
 					predicate.Or(
-						predicate.GenerationChangedPredicate{}, // when Spec changes
 						predicate.LabelChangedPredicate{},
 						predicate.AnnotationChangedPredicate{},
+						taintChangePredicate(),
 					),
 					predicate.NewTypedPredicateFuncs(func(object client.Object) bool {
 						if _, ok := object.GetLabels()[NodeTemplateReferenceLabelKey]; ok {

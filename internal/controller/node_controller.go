@@ -9,7 +9,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 )
 
 // +kubebuilder:rbac:groups=core,resources=nodes,verbs=get;list;watch;update;patch
@@ -75,7 +74,7 @@ func (r *NodeReconciler) updateMetrics(ctx context.Context) error {
 func (r *NodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Node{}).
+		WithEventFilter(taintChangePredicate()).
 		Named("node").
-		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
 		Complete(r)
 }
