@@ -52,15 +52,15 @@ var _ = Describe("Utilities functions tests", func() {
 			taints2 := []corev1.Taint{
 				{Key: "key1", Value: "value2", Effect: corev1.TaintEffectNoSchedule},
 			}
-			taint3 := []corev1.Taint{
+			taints3 := []corev1.Taint{
 				{Key: "key2", Value: "value1", Effect: corev1.TaintEffectNoSchedule},
 			}
-			taint4 := []corev1.Taint{
+			taints4 := []corev1.Taint{
 				{Key: "key1", Value: "value1", Effect: corev1.TaintEffectPreferNoSchedule},
 			}
 			Expect(taintsEqual(taints1, taints2)).To(BeFalse())
-			Expect(taintsEqual(taints1, taint3)).To(BeFalse())
-			Expect(taintsEqual(taints1, taint4)).To(BeFalse())
+			Expect(taintsEqual(taints1, taints3)).To(BeFalse())
+			Expect(taintsEqual(taints1, taints4)).To(BeFalse())
 		})
 		It("should return true for empty and nil taint slices", func() {
 			Expect(taintsEqual([]corev1.Taint{}, []corev1.Taint{})).To(BeTrue())
