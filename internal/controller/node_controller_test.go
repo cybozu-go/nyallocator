@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/config"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
@@ -78,6 +79,35 @@ var _ = Describe("NodeTemplate Controller", func() {
 						g.Expect(node.Labels).To(HaveKeyWithValue("test-label", "foo"))
 					}
 				}
+			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
+		})
+
+		It("should add spare label when spare taint is added to existing node", func() {
+			By("creating Node without spare taint")
+			node := newNode("node1").withLabel(map[string]string{"node-role.kubernetes.io/worker": "true"}).build()
+			err := k8sClient.Create(ctx, &node)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("adding spare taint to the Node")
+			Eventually(func(g Gomega) {
+				nodeToUpdate := &corev1.Node{}
+				err = k8sClient.Get(ctx, client.ObjectKey{Name: "node1"}, nodeToUpdate)
+				g.Expect(err).ToNot(HaveOccurred())
+				nodeToUpdate.Spec.Taints = append(nodeToUpdate.Spec.Taints, corev1.Taint{
+					Key:    "node.cybozu.io/spare",
+					Value:  "true",
+					Effect: corev1.TaintEffectNoSchedule,
+				})
+				err = k8sClient.Update(ctx, nodeToUpdate)
+				g.Expect(err).ToNot(HaveOccurred())
+			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
+
+			By("checking Node status")
+			Eventually(func(g Gomega) {
+				updatedNode := &corev1.Node{}
+				err := k8sClient.Get(ctx, client.ObjectKey{Name: "node1"}, updatedNode)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(updatedNode.Labels).To(HaveKeyWithValue("node-role.kubernetes.io/spare", "true"))
 			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 		})
 	})

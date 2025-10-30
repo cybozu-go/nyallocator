@@ -274,7 +274,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test1"}, nt)
 			Expect(err).ToNot(HaveOccurred())
 			for _, condition := range nt.Status.Conditions {
-				if condition.Type == ConditionSufficient {
+				if condition.Type == "Sufficient" {
 					Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 					Expect(condition.Reason).To(Equal("HighPriorityNodeTemplateExists"))
 					break
@@ -286,7 +286,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test2"}, nt)
 			Expect(err).ToNot(HaveOccurred())
 			for _, condition := range nt.Status.Conditions {
-				if condition.Type == ConditionSufficient {
+				if condition.Type == "Sufficient" {
 					Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 					Expect(condition.Reason).To(Equal("NoSpareNodesFound"))
 					break
@@ -314,7 +314,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 				err = k8sClient.Get(ctx, client.ObjectKey{Name: "test1"}, nt)
 				g.Expect(err).ToNot(HaveOccurred())
 				for _, condition := range nt.Status.Conditions {
-					if condition.Type == ConditionSufficient {
+					if condition.Type == "Sufficient" {
 						g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 						g.Expect(condition.Reason).To(Equal("NoSpareNodesFound"))
 						break
@@ -436,7 +436,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
 			Expect(err).ToNot(HaveOccurred())
 			for _, condition := range nt.Status.Conditions {
-				if condition.Type == ConditionSufficient {
+				if condition.Type == "Sufficient" {
 					Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 					Expect(condition.Reason).To(Equal("NoSpareNodesFound"))
 					break
@@ -654,7 +654,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 				err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
 				g.Expect(err).ToNot(HaveOccurred())
 				for _, condition := range nt.Status.Conditions {
-					if condition.Type == ConditionReconcileSuccess {
+					if condition.Type == "ReconcileSuccess" {
 						g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 						g.Expect(condition.Reason).To(Equal("ReconcileError"))
 						break
@@ -769,7 +769,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 				err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
 				g.Expect(err).ToNot(HaveOccurred())
 				for _, condition := range nt.Status.Conditions {
-					if condition.Type == ConditionSufficient {
+					if condition.Type == "Sufficient" {
 						g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 						g.Expect(condition.Reason).To(Equal("HighPriorityNodeTemplateExists"))
 						break
@@ -843,7 +843,11 @@ var _ = Describe("NodeTemplate Controller", func() {
 			nodeToUpdate := &corev1.Node{}
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "node1"}, nodeToUpdate)
 			Expect(err).ToNot(HaveOccurred())
-			nodeToUpdate.Labels["test-label"] = "updated"
+			nodeToUpdate.Spec.Taints = append(nodeToUpdate.Spec.Taints, corev1.Taint{
+				Key:    "extra-taint",
+				Value:  "true",
+				Effect: corev1.TaintEffectNoSchedule,
+			})
 			err = k8sClient.Update(ctx, nodeToUpdate)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -852,7 +856,11 @@ var _ = Describe("NodeTemplate Controller", func() {
 				updatedNode := &corev1.Node{}
 				err := k8sClient.Get(ctx, client.ObjectKey{Name: "node1"}, updatedNode)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(updatedNode.Labels).To(HaveKeyWithValue("test-label", "foo"))
+				g.Expect(updatedNode.Spec.Taints).To(ContainElement(corev1.Taint{
+					Key:    "extra-taint",
+					Value:  "true",
+					Effect: corev1.TaintEffectNoSchedule,
+				}))
 			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 		})
 
@@ -1083,7 +1091,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(nodeTemplate.Status.CurrentNodes).To(Equal(0))
 			for _, condition := range nodeTemplate.Status.Conditions {
-				if condition.Type == ConditionSufficient {
+				if condition.Type == "Sufficient" {
 					Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 					Expect(condition.Reason).To(Equal("NoSpareNodesFound"))
 				}
