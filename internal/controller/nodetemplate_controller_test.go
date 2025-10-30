@@ -203,7 +203,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			L:
 				for _, node := range nodes.Items {
 					for _, taint := range node.Spec.Taints {
-						if taint.Key == SpareTaintKey {
+						if taint.Key == "node.cybozu.io/spare" {
 							continue L
 						}
 					}
@@ -274,7 +274,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test1"}, nt)
 			Expect(err).ToNot(HaveOccurred())
 			for _, condition := range nt.Status.Conditions {
-				if condition.Type == ConditionSufficient {
+				if condition.Type == "Sufficient" {
 					Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 					Expect(condition.Reason).To(Equal("HighPriorityNodeTemplateExists"))
 					break
@@ -286,7 +286,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test2"}, nt)
 			Expect(err).ToNot(HaveOccurred())
 			for _, condition := range nt.Status.Conditions {
-				if condition.Type == ConditionSufficient {
+				if condition.Type == "Sufficient" {
 					Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 					Expect(condition.Reason).To(Equal("NoSpareNodesFound"))
 					break
@@ -314,7 +314,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 				err = k8sClient.Get(ctx, client.ObjectKey{Name: "test1"}, nt)
 				g.Expect(err).ToNot(HaveOccurred())
 				for _, condition := range nt.Status.Conditions {
-					if condition.Type == ConditionSufficient {
+					if condition.Type == "Sufficient" {
 						g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 						g.Expect(condition.Reason).To(Equal("NoSpareNodesFound"))
 						break
@@ -436,7 +436,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
 			Expect(err).ToNot(HaveOccurred())
 			for _, condition := range nt.Status.Conditions {
-				if condition.Type == ConditionSufficient {
+				if condition.Type == "Sufficient" {
 					Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 					Expect(condition.Reason).To(Equal("NoSpareNodesFound"))
 					break
@@ -654,7 +654,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 				err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
 				g.Expect(err).ToNot(HaveOccurred())
 				for _, condition := range nt.Status.Conditions {
-					if condition.Type == ConditionReconcileSuccess {
+					if condition.Type == "ReconcileSuccess" {
 						g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 						g.Expect(condition.Reason).To(Equal("ReconcileError"))
 						break
@@ -769,7 +769,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 				err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
 				g.Expect(err).ToNot(HaveOccurred())
 				for _, condition := range nt.Status.Conditions {
-					if condition.Type == ConditionSufficient {
+					if condition.Type == "Sufficient" {
 						g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 						g.Expect(condition.Reason).To(Equal("HighPriorityNodeTemplateExists"))
 						break
@@ -1091,7 +1091,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(nodeTemplate.Status.CurrentNodes).To(Equal(0))
 			for _, condition := range nodeTemplate.Status.Conditions {
-				if condition.Type == ConditionSufficient {
+				if condition.Type == "Sufficient" {
 					Expect(condition.Status).To(Equal(metav1.ConditionFalse))
 					Expect(condition.Reason).To(Equal("NoSpareNodesFound"))
 				}
@@ -1198,7 +1198,7 @@ func newNode(name string) NodeBuilder {
 
 func (n NodeBuilder) withSpareTaint() NodeBuilder {
 	n.Spec.Taints = append(n.Spec.Taints, corev1.Taint{
-		Key:    SpareTaintKey,
+		Key:    "node.cybozu.io/spare",
 		Value:  "true",
 		Effect: corev1.TaintEffectNoSchedule,
 	})

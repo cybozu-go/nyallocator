@@ -94,7 +94,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 				err = k8sClient.Get(ctx, client.ObjectKey{Name: "node1"}, nodeToUpdate)
 				g.Expect(err).ToNot(HaveOccurred())
 				nodeToUpdate.Spec.Taints = append(nodeToUpdate.Spec.Taints, corev1.Taint{
-					Key:    SpareTaintKey,
+					Key:    "node.cybozu.io/spare",
 					Value:  "true",
 					Effect: corev1.TaintEffectNoSchedule,
 				})

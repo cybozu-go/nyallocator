@@ -24,6 +24,14 @@ var _ = Describe("Utilities functions tests", func() {
 			}
 			Expect(sorted).To(Equal(expected))
 		})
+		It("should handle nil taint slice", func() {
+			sorted := sortTaints(nil)
+			Expect(sorted).To(BeEmpty())
+		})
+		It("should handle empty taint slice", func() {
+			sorted := sortTaints([]corev1.Taint{})
+			Expect(sorted).To(BeEmpty())
+		})
 	})
 	Context("taintsEqual function", func() {
 		It("should return true for equal taint slices", func() {
@@ -36,6 +44,25 @@ var _ = Describe("Utilities functions tests", func() {
 				{Key: "key1", Value: "value1", Effect: corev1.TaintEffectNoSchedule},
 			}
 			Expect(taintsEqual(taints1, taints2)).To(BeTrue())
+		})
+		It("should return false for different taint slices", func() {
+			taints1 := []corev1.Taint{
+				{Key: "key1", Value: "value1", Effect: corev1.TaintEffectNoSchedule},
+			}
+			taints2 := []corev1.Taint{
+				{Key: "key1", Value: "value2", Effect: corev1.TaintEffectNoSchedule},
+			}
+			taint3 := []corev1.Taint{
+				{Key: "key2", Value: "value1", Effect: corev1.TaintEffectNoSchedule},
+			}
+
+			Expect(taintsEqual(taints1, taints2)).To(BeFalse())
+			Expect(taintsEqual(taints1, taint3)).To(BeFalse())
+		})
+		It("should return true for empty and nil taint slices", func() {
+			Expect(taintsEqual([]corev1.Taint{}, []corev1.Taint{})).To(BeTrue())
+			Expect(taintsEqual(nil, nil)).To(BeTrue())
+			Expect(taintsEqual([]corev1.Taint{}, nil)).To(BeTrue())
 		})
 	})
 })
