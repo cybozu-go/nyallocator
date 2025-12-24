@@ -5,6 +5,8 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.3] 2025-12-24
+
 ### Changed
 
 - Update dependencies for Kubernetes 1.33 in [#10](https://github.com/cybozu-go/nyallocator/pull/10)
@@ -37,7 +39,8 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 - first release in [#1](https://github.com/cybozu-go/nyallocator/pull/1)
 
-[Unreleased]: https://github.com/cybozu-go/nyallocator/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/cybozu-go/nyallocator/compare/v1.1.3...HEAD
+[1.1.3]: https://github.com/cybozu-go/nyallocator/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/cybozu-go/nyallocator/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/cybozu-go/nyallocator/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/cybozu-go/nyallocator/compare/v1.0.0...v1.1.0
