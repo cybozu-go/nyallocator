@@ -30,7 +30,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 					SkipNameValidation: ptr.To(true),
 				},
 			})
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			nodeReconciler := &NodeReconciler{
 				Client: mgr.GetClient(),
 				Scheme: scheme,
@@ -49,7 +49,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 
 		AfterEach(func() {
 			err := k8sClient.DeleteAllOf(ctx, &corev1.Node{})
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			stopFunc()
 			time.Sleep(100 * time.Millisecond)
 		})
@@ -62,20 +62,20 @@ var _ = Describe("NodeTemplate Controller", func() {
 			}
 			for _, node := range nodes {
 				err := k8sClient.Create(ctx, &node)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).NotTo(HaveOccurred())
 			}
 
 			By("checking Node status")
 			Eventually(func(g Gomega) {
 				nodeList := &corev1.NodeList{}
 				err := k8sClient.List(ctx, nodeList)
-				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(err).NotTo(HaveOccurred())
 				for _, node := range nodeList.Items {
 					if node.Name == "node1" {
 						g.Expect(node.Labels).To(HaveKeyWithValue("node-role.kubernetes.io/spare", "true"))
 						g.Expect(node.Labels).To(HaveKeyWithValue("test-label", "foo"))
 					} else if node.Name == "node2" {
-						g.Expect(node.Labels).ToNot(HaveKey("node-role.kubernetes.io/spare"))
+						g.Expect(node.Labels).NotTo(HaveKey("node-role.kubernetes.io/spare"))
 						g.Expect(node.Labels).To(HaveKeyWithValue("test-label", "foo"))
 					}
 				}
@@ -86,20 +86,20 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("creating Node without spare taint")
 			node := newNode("node1").withLabel(map[string]string{"node-role.kubernetes.io/worker": "true"}).build()
 			err := k8sClient.Create(ctx, &node)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("adding spare taint to the Node")
 			Eventually(func(g Gomega) {
 				nodeToUpdate := &corev1.Node{}
 				err = k8sClient.Get(ctx, client.ObjectKey{Name: "node1"}, nodeToUpdate)
-				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(err).NotTo(HaveOccurred())
 				nodeToUpdate.Spec.Taints = append(nodeToUpdate.Spec.Taints, corev1.Taint{
 					Key:    "node.cybozu.io/spare",
 					Value:  "true",
 					Effect: corev1.TaintEffectNoSchedule,
 				})
 				err = k8sClient.Update(ctx, nodeToUpdate)
-				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(err).NotTo(HaveOccurred())
 			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 
 			By("checking Node status")

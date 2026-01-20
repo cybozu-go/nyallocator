@@ -36,7 +36,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 					SkipNameValidation: ptr.To(true),
 				},
 			})
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			nodeTemplateReconciler := &NodeTemplateReconciler{
 				Client:             mgr.GetClient(),
 				Scheme:             scheme,
@@ -61,15 +61,15 @@ var _ = Describe("NodeTemplate Controller", func() {
 
 		AfterEach(func() {
 			err := k8sClient.DeleteAllOf(ctx, &nyallocatorv1.NodeTemplate{})
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			Eventually(func(g Gomega) {
 				ntList := &nyallocatorv1.NodeTemplateList{}
 				err := k8sClient.List(ctx, ntList)
-				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(ntList.Items).To(BeEmpty(), "NodeTemplate should be deleted")
 			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 			err = k8sClient.DeleteAllOf(ctx, &corev1.Node{})
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			stopFunc()
 			time.Sleep(100 * time.Millisecond)
 		})
@@ -83,7 +83,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			}
 			for _, node := range nodes {
 				err := k8sClient.Create(ctx, &node)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).NotTo(HaveOccurred())
 			}
 			By("creating NodeTemplate")
 			nodeTemplate := &nyallocatorv1.NodeTemplate{
@@ -121,7 +121,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 				},
 			}
 			err := k8sClient.Create(ctx, nodeTemplate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking NodeTemplate status")
 			checkNodeTemplateStatus("test", true)
@@ -129,7 +129,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("checking node is properly configured")
 			n := &corev1.NodeList{}
 			err = k8sClient.List(ctx, n, client.MatchingLabels{"nyallocator.cybozu.io/node-template": "test"})
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			Expect(n.Items).To(HaveLen(2), "should have allocated 2 nodes")
 			for _, node := range n.Items {
 				Expect(node.Labels).To(HaveKeyWithValue("test-label", "foo"), "node should have the correct label")
@@ -143,10 +143,10 @@ var _ = Describe("NodeTemplate Controller", func() {
 
 			By("checking metrics are exposed correctly")
 			resp, err := http.Get("http://localhost:8080/metrics")
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			defer resp.Body.Close()
 			body, err := io.ReadAll(resp.Body)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			Expect(string(body)).To(ContainSubstring("nyallocator_desired_nodes{nodetemplate=\"test\"} 2"))
 			Expect(string(body)).To(ContainSubstring("nyallocator_current_nodes{nodetemplate=\"test\"} 2"))
 			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient_nodes{nodetemplate=\"test\"} 1"))
@@ -163,7 +163,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			}
 			for _, node := range nodes {
 				err := k8sClient.Create(ctx, &node)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).NotTo(HaveOccurred())
 			}
 			By("creating NodeTemplate")
 			nodeTemplate := &nyallocatorv1.NodeTemplate{
@@ -189,7 +189,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 				},
 			}
 			err := k8sClient.Create(ctx, nodeTemplate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking NodeTemplate status")
 			checkNodeTemplateStatus("test", false)
@@ -198,7 +198,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			Eventually(func(g Gomega) {
 				nodes := &corev1.NodeList{}
 				err := k8sClient.List(ctx, nodes)
-				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(err).NotTo(HaveOccurred())
 				allUnchanged := true
 			L:
 				for _, node := range nodes.Items {
@@ -261,9 +261,9 @@ var _ = Describe("NodeTemplate Controller", func() {
 				},
 			}
 			err := k8sClient.Create(ctx, nodeTemplate1)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			err = k8sClient.Create(ctx, nodeTemplate2)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking NodeTemplate status")
 			checkNodeTemplateStatus("test1", false)
@@ -272,7 +272,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("checking the insufficient reason")
 			nt := &nyallocatorv1.NodeTemplate{}
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test1"}, nt)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			for _, condition := range nt.Status.Conditions {
 				if condition.Type == "Sufficient" {
 					Expect(condition.Status).To(Equal(metav1.ConditionFalse))
@@ -284,7 +284,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("checking the insufficient reason")
 			nt = &nyallocatorv1.NodeTemplate{}
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test2"}, nt)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			for _, condition := range nt.Status.Conditions {
 				if condition.Type == "Sufficient" {
 					Expect(condition.Status).To(Equal(metav1.ConditionFalse))
@@ -301,7 +301,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			}
 			for _, node := range nodes {
 				err := k8sClient.Create(ctx, &node)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).NotTo(HaveOccurred())
 			}
 
 			By("checking NodeTemplate status")
@@ -312,7 +312,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			Eventually(func(g Gomega) {
 				nt = &nyallocatorv1.NodeTemplate{}
 				err = k8sClient.Get(ctx, client.ObjectKey{Name: "test1"}, nt)
-				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(err).NotTo(HaveOccurred())
 				for _, condition := range nt.Status.Conditions {
 					if condition.Type == "Sufficient" {
 						g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
@@ -326,19 +326,19 @@ var _ = Describe("NodeTemplate Controller", func() {
 			Eventually(func(g Gomega) {
 				var n1, n2 corev1.NodeList
 				err := k8sClient.List(ctx, &n1, client.MatchingLabels{"nyallocator.cybozu.io/node-template": "test1"})
-				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(err).NotTo(HaveOccurred())
 				err = k8sClient.List(ctx, &n2, client.MatchingLabels{"nyallocator.cybozu.io/node-template": "test2"})
-				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(n1.Items).To(HaveLen(1))
 				g.Expect(n2.Items).To(HaveLen(2))
 			}).WithTimeout(20 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 
 			By("checking metrics are exposed correctly")
 			resp, err := http.Get("http://localhost:8080/metrics")
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			defer resp.Body.Close()
 			body, err := io.ReadAll(resp.Body)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			Expect(string(body)).To(ContainSubstring("nyallocator_desired_nodes{nodetemplate=\"test1\"} 2"))
 			Expect(string(body)).To(ContainSubstring("nyallocator_desired_nodes{nodetemplate=\"test2\"} 2"))
 			Expect(string(body)).To(ContainSubstring("nyallocator_current_nodes{nodetemplate=\"test1\"} 1"))
@@ -353,13 +353,13 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("adding a new spare node")
 			newNode := newNode("node4").withLabel(map[string]string{"node-role.kubernetes.io/worker": "true"}).withSpareTaint().build()
 			err = k8sClient.Create(ctx, &newNode)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking node4 is used")
 			Eventually(func(g Gomega) {
 				node := &corev1.Node{}
 				err := k8sClient.Get(ctx, client.ObjectKey{Name: "node4"}, node)
-				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(node.Labels).To(HaveKeyWithValue("nyallocator.cybozu.io/node-template", "test1"))
 			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 
@@ -369,9 +369,9 @@ var _ = Describe("NodeTemplate Controller", func() {
 
 			By("checking metrics are exposed correctly")
 			resp, err = http.Get("http://localhost:8080/metrics")
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			body, err = io.ReadAll(resp.Body)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			Expect(string(body)).To(ContainSubstring("nyallocator_desired_nodes{nodetemplate=\"test1\"} 2"))
 			Expect(string(body)).To(ContainSubstring("nyallocator_desired_nodes{nodetemplate=\"test2\"} 2"))
 			Expect(string(body)).To(ContainSubstring("nyallocator_current_nodes{nodetemplate=\"test1\"} 2"))
@@ -393,7 +393,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			}
 			for _, node := range nodes {
 				err := k8sClient.Create(ctx, &node)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).NotTo(HaveOccurred())
 			}
 			By("creating NodeTemplate")
 			nodeTemplate := &nyallocatorv1.NodeTemplate{
@@ -419,14 +419,14 @@ var _ = Describe("NodeTemplate Controller", func() {
 				},
 			}
 			err := k8sClient.Create(ctx, nodeTemplate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking NodeTemplate status")
 			checkNodeTemplateStatus("test", true)
 
 			By("deleting an existing node")
 			err = k8sClient.Delete(ctx, &nodes[0])
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking NodeTemplate status after deletion")
 			checkNodeTemplateStatus("test", false)
@@ -434,7 +434,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("checking the insufficient reason")
 			nt := &nyallocatorv1.NodeTemplate{}
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			for _, condition := range nt.Status.Conditions {
 				if condition.Type == "Sufficient" {
 					Expect(condition.Status).To(Equal(metav1.ConditionFalse))
@@ -445,10 +445,10 @@ var _ = Describe("NodeTemplate Controller", func() {
 
 			By("checking metrics are exposed correctly")
 			resp, err := http.Get("http://localhost:8080/metrics")
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			defer resp.Body.Close()
 			body, err := io.ReadAll(resp.Body)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			Expect(string(body)).To(ContainSubstring("nyallocator_desired_nodes{nodetemplate=\"test\"} 3"))
 			Expect(string(body)).To(ContainSubstring("nyallocator_current_nodes{nodetemplate=\"test\"} 2"))
 			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient_nodes{nodetemplate=\"test\"} 0"))
@@ -458,13 +458,13 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("adding a new spare node")
 			newNode := newNode("node4").withLabel(map[string]string{"node-role.kubernetes.io/worker": "true"}).withSpareTaint().build()
 			err = k8sClient.Create(ctx, &newNode)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking node4 is used")
 			Eventually(func(g Gomega) {
 				node := &corev1.Node{}
 				err := k8sClient.Get(ctx, client.ObjectKey{Name: "node4"}, node)
-				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(node.Labels).To(HaveKeyWithValue("nyallocator.cybozu.io/node-template", "test"))
 			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 
@@ -473,10 +473,10 @@ var _ = Describe("NodeTemplate Controller", func() {
 
 			By("checking metrics are exposed correctly")
 			resp, err = http.Get("http://localhost:8080/metrics")
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			defer resp.Body.Close()
 			body, err = io.ReadAll(resp.Body)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			Expect(string(body)).To(ContainSubstring("nyallocator_desired_nodes{nodetemplate=\"test\"} 3"))
 			Expect(string(body)).To(ContainSubstring("nyallocator_current_nodes{nodetemplate=\"test\"} 3"))
 			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient_nodes{nodetemplate=\"test\"} 1"))
@@ -493,7 +493,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			}
 			for _, node := range nodes {
 				err := k8sClient.Create(ctx, &node)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).NotTo(HaveOccurred())
 			}
 			By("creating NodeTemplate")
 			nodeTemplate := &nyallocatorv1.NodeTemplate{
@@ -531,7 +531,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 				},
 			}
 			err := k8sClient.Create(ctx, nodeTemplate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking NodeTemplate status")
 			checkNodeTemplateStatus("test", true)
@@ -539,7 +539,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("checking Node status")
 			allNodes := &corev1.NodeList{}
 			err = k8sClient.List(ctx, allNodes)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			for _, node := range allNodes.Items {
 				Expect(node.Labels).To(HaveKeyWithValue("test-label", "foo"), "node should have the correct label")
@@ -548,7 +548,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("updating NodeTemplate")
 			nodeTemplate = &nyallocatorv1.NodeTemplate{}
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nodeTemplate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			nodeTemplate.Spec.Template.Metadata.Labels["test-label"] = "bar"
 			nodeTemplate.Spec.Template.Metadata.Labels["new-label"] = "baz"
 			nodeTemplate.Spec.Template.Metadata.Annotations["test-annotation"] = "bar"
@@ -565,7 +565,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			})
 
 			err = k8sClient.Update(ctx, nodeTemplate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking NodeTemplate status after update")
 			checkNodeTemplateStatus("test", true)
@@ -573,7 +573,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("checking Node status after update")
 			allNodes = &corev1.NodeList{}
 			err = k8sClient.List(ctx, allNodes)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			for _, node := range allNodes.Items {
 				Expect(node.Labels).To(HaveKeyWithValue("test-label", "bar"))
 				Expect(node.Labels).To(HaveKeyWithValue("new-label", "baz"))
@@ -594,7 +594,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("removing label, annotation, taint from NodeTemplate")
 			nodeTemplate = &nyallocatorv1.NodeTemplate{}
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nodeTemplate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			delete(nodeTemplate.Spec.Template.Metadata.Labels, "new-label")
 			delete(nodeTemplate.Spec.Template.Metadata.Annotations, "new-annotation")
 			nodeTemplate.Spec.Template.Spec.Taints = []corev1.Taint{
@@ -605,7 +605,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 				},
 			}
 			err = k8sClient.Update(ctx, nodeTemplate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking NodeTemplate status after update")
 			checkNodeTemplateStatus("test", true)
@@ -613,7 +613,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("checking label, annotation, taint are not removed from Node")
 			allNodes = &corev1.NodeList{}
 			err = k8sClient.List(ctx, allNodes)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			for _, node := range allNodes.Items {
 				Expect(node.Labels).To(HaveKeyWithValue("test-label", "bar"))
 				Expect(node.Labels).To(HaveKeyWithValue("new-label", "baz"))
@@ -633,26 +633,26 @@ var _ = Describe("NodeTemplate Controller", func() {
 
 			By("checking metrics are exposed correctly")
 			resp, err := http.Get("http://localhost:8080/metrics")
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			defer resp.Body.Close()
 			body, err := io.ReadAll(resp.Body)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			Expect(string(body)).To(ContainSubstring("nyallocator_reconcile_success{nodetemplate=\"test\"} 1"))
 
 			By("changing the NodeTemplate to invalid configuration")
 			nodeTemplate = &nyallocatorv1.NodeTemplate{}
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nodeTemplate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			nodeTemplate.Spec.Template.Metadata.Labels["test-label?"] = "invalid"
 			err = k8sClient.Update(ctx, nodeTemplate)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("checking NodeTemplate status after invalid update")
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			Eventually(func(g Gomega) {
 				nt := &nyallocatorv1.NodeTemplate{}
 				err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
-				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(err).NotTo(HaveOccurred())
 				for _, condition := range nt.Status.Conditions {
 					if condition.Type == "ReconcileSuccess" {
 						g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
@@ -664,10 +664,10 @@ var _ = Describe("NodeTemplate Controller", func() {
 
 			By("checking metrics are exposed correctly")
 			resp, err = http.Get("http://localhost:8080/metrics")
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			defer resp.Body.Close()
 			body, err = io.ReadAll(resp.Body)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			Expect(string(body)).To(ContainSubstring("nyallocator_reconcile_success{nodetemplate=\"test\"} 0"))
 
 		})
@@ -681,7 +681,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			}
 			for _, node := range nodes {
 				err := k8sClient.Create(ctx, &node)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).NotTo(HaveOccurred())
 			}
 
 			By("creating NodeTemplate")
@@ -708,19 +708,19 @@ var _ = Describe("NodeTemplate Controller", func() {
 				},
 			}
 			err := k8sClient.Create(ctx, nodeTemplate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking NodeTemplate status")
 			checkNodeTemplateStatus("test", false)
 			nt := &nyallocatorv1.NodeTemplate{}
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			Expect(nt.Status.CurrentNodes).To(Equal(3))
 
 			By("updating NodeTemplate")
 			nt.Spec.Template.Metadata.Labels["new-label"] = "bar"
 			err = k8sClient.Update(ctx, nt)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("waiting for the NodeTemplate to be updated")
 			checkNodeTemplateStatus("test", false)
@@ -728,7 +728,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("checking Node status after update")
 			allNodes := &corev1.NodeList{}
 			err = k8sClient.List(ctx, allNodes)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			for _, node := range allNodes.Items {
 				Expect(node.Labels).To(HaveKeyWithValue("test-label", "foo"))
 				Expect(node.Labels).To(HaveKeyWithValue("new-label", "bar"))
@@ -758,7 +758,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 				},
 			}
 			err = k8sClient.Create(ctx, highPriorityNodeTemplate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking NodeTemplate status")
 			checkNodeTemplateStatus("test-high-priority", false)
@@ -767,7 +767,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			Eventually(func(g Gomega) {
 				nt = &nyallocatorv1.NodeTemplate{}
 				err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
-				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(err).NotTo(HaveOccurred())
 				for _, condition := range nt.Status.Conditions {
 					if condition.Type == "Sufficient" {
 						g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
@@ -780,10 +780,10 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("updating the original NodeTemplate")
 			nt = &nyallocatorv1.NodeTemplate{}
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			nt.Spec.Template.Metadata.Labels["new-label2"] = "baz"
 			err = k8sClient.Update(ctx, nt)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking NodeTemplate status after update")
 			checkNodeTemplateStatus("test", false)
@@ -791,7 +791,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("checking Node status after update")
 			allNodes = &corev1.NodeList{}
 			err = k8sClient.List(ctx, allNodes)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			for _, node := range allNodes.Items {
 				Expect(node.Labels).To(HaveKeyWithValue("test-label", "foo"))
 				Expect(node.Labels).To(HaveKeyWithValue("new-label", "bar"))
@@ -808,7 +808,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			}
 			for _, node := range nodes {
 				err := k8sClient.Create(ctx, &node)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).NotTo(HaveOccurred())
 			}
 			By("creating NodeTemplate")
 			nodeTemplate := &nyallocatorv1.NodeTemplate{
@@ -834,7 +834,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 				},
 			}
 			err := k8sClient.Create(ctx, nodeTemplate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking NodeTemplate status")
 			checkNodeTemplateStatus("test", true)
@@ -842,14 +842,14 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("changing a node's configuration")
 			nodeToUpdate := &corev1.Node{}
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "node1"}, nodeToUpdate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			nodeToUpdate.Spec.Taints = append(nodeToUpdate.Spec.Taints, corev1.Taint{
 				Key:    "extra-taint",
 				Value:  "true",
 				Effect: corev1.TaintEffectNoSchedule,
 			})
 			err = k8sClient.Update(ctx, nodeToUpdate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking node's configuration is synced")
 			Eventually(func(g Gomega) {
@@ -879,7 +879,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			}
 			for _, node := range nodes {
 				err := k8sClient.Create(ctx, &node)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).NotTo(HaveOccurred())
 			}
 			By("creating NodeTemplate")
 			nodeTemplate := &nyallocatorv1.NodeTemplate{
@@ -905,7 +905,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 				},
 			}
 			err := k8sClient.Create(ctx, nodeTemplate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking NodeTemplate status")
 			checkNodeTemplateStatus("test", true)
@@ -913,7 +913,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("counting nodes in each zone")
 			allocatedNode := &corev1.NodeList{}
 			err = k8sClient.List(ctx, allocatedNode, client.MatchingLabels{"nyallocator.cybozu.io/node-template": "test"})
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			zoneCount := make(map[string]int)
 			for _, node := range allocatedNode.Items {
 				if val, ok := node.Labels["topology.kubernetes.io/zone"]; ok {
@@ -940,7 +940,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			}
 			for _, node := range nodes {
 				err := k8sClient.Create(ctx, &node)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).NotTo(HaveOccurred())
 			}
 
 			By("creating NodeTemplate")
@@ -981,7 +981,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 				},
 			}
 			err := k8sClient.Create(ctx, nodeTemplate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking NodeTemplate status")
 			checkNodeTemplateStatus("test", true)
@@ -989,7 +989,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("checking Node status")
 			allocatedNode := &corev1.NodeList{}
 			err = k8sClient.List(ctx, allocatedNode, client.MatchingLabels{"nyallocator.cybozu.io/node-template": "test"})
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			Expect(allocatedNode.Items).To(HaveLen(1), "should have created 1 node")
 			Expect(allocatedNode.Items[0].Name).To(Equal("node9"), "should have selected node9 based on the label selector")
 		})
@@ -1006,7 +1006,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			}
 			for _, node := range nodes {
 				err := k8sClient.Create(ctx, &node)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).NotTo(HaveOccurred())
 			}
 
 			By("creating NodeTemplate")
@@ -1033,7 +1033,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 				},
 			}
 			err := k8sClient.Create(ctx, nodeTemplate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking NodeTemplate status")
 			checkNodeTemplateStatus("test", true)
@@ -1041,14 +1041,14 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("changing NodeTemplate selector")
 			nodeTemplate = &nyallocatorv1.NodeTemplate{}
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nodeTemplate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			nodeTemplate.Spec.Selector = &metav1.LabelSelector{
 				MatchLabels: map[string]string{
 					"node-role.kubernetes.io/worker2": "true",
 				},
 			}
 			err = k8sClient.Update(ctx, nodeTemplate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking NodeTemplate status after update")
 			checkNodeTemplateStatus("test", true)
@@ -1056,7 +1056,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("checking nodes has no reference labels and out-of-management labels")
 			workerNodes := &corev1.NodeList{}
 			err = k8sClient.List(ctx, workerNodes, client.MatchingLabels{"node-role.kubernetes.io/worker": "true"})
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			for _, node := range workerNodes.Items {
 				Expect(node.Labels).NotTo(HaveKeyWithValue("nyallocator.cybozu.io/node-template", "test"))
 				Expect(node.Labels).To(HaveKeyWithValue("nyallocator.cybozu.io/out-of-management", "test"))
@@ -1066,7 +1066,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("checking new selected nodes are configured correctly")
 			worker2Nodes := &corev1.NodeList{}
 			err = k8sClient.List(ctx, worker2Nodes, client.MatchingLabels{"node-role.kubernetes.io/worker2": "true"})
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			for _, node := range worker2Nodes.Items {
 				Expect(node.Labels).To(HaveKeyWithValue("nyallocator.cybozu.io/node-template", "test"))
 				Expect(node.Labels).To(HaveKeyWithValue("test-label", "foo"))
@@ -1075,20 +1075,20 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("changing selector to unexisting nodes")
 			nodeTemplate = &nyallocatorv1.NodeTemplate{}
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nodeTemplate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			nodeTemplate.Spec.Selector = &metav1.LabelSelector{
 				MatchLabels: map[string]string{
 					"node-role.kubernetes.io/worker3": "true",
 				},
 			}
 			err = k8sClient.Update(ctx, nodeTemplate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking NodeTemplate status after update")
 			checkNodeTemplateStatus("test", false)
 			nodeTemplate = &nyallocatorv1.NodeTemplate{}
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nodeTemplate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			Expect(nodeTemplate.Status.CurrentNodes).To(Equal(0))
 			for _, condition := range nodeTemplate.Status.Conditions {
 				if condition.Type == "Sufficient" {
@@ -1107,7 +1107,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			}
 			for _, node := range nodes {
 				err := k8sClient.Create(ctx, &node)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).NotTo(HaveOccurred())
 			}
 
 			By("creating NodeTemplate")
@@ -1134,7 +1134,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 				},
 			}
 			err := k8sClient.Create(ctx, nodeTemplate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking NodeTemplate status")
 			checkNodeTemplateStatus("test", true)
@@ -1142,12 +1142,12 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("checking NodeTemplate has a finalizer")
 			nt := &nyallocatorv1.NodeTemplate{}
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			Expect(nt.ObjectMeta.Finalizers).To(ContainElement("nyallocator.cybozu.io/finalizer"))
 
 			By("deleting NodeTemplate")
 			err = k8sClient.Delete(ctx, nt)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking NodeTemplate is deleted")
 			Eventually(func(g Gomega) {
@@ -1160,18 +1160,18 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("checking nodes has no reference label")
 			allNodes := &corev1.NodeList{}
 			err = k8sClient.List(ctx, allNodes)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			for _, node := range allNodes.Items {
-				Expect(node.Labels).ToNot(HaveKey("nyallocator.cybozu.io/node-template"))
+				Expect(node.Labels).NotTo(HaveKey("nyallocator.cybozu.io/node-template"))
 			}
 
 			By("checking metrics are exposed correctly")
 			Eventually(func(g Gomega) {
 				resp, err := http.Get("http://localhost:8080/metrics")
-				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(err).NotTo(HaveOccurred())
 				defer resp.Body.Close()
 				body, err := io.ReadAll(resp.Body)
-				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(string(body)).NotTo(ContainSubstring("nyallocator_desired_nodes{nodetemplate=\"test\"}"))
 				g.Expect(string(body)).NotTo(ContainSubstring("nyallocator_current_nodes{nodetemplate=\"test\"}"))
 				g.Expect(string(body)).NotTo(ContainSubstring("nyallocator_sufficient_nodes{nodetemplate=\"test\"}"))
@@ -1314,7 +1314,7 @@ func checkNodeTemplateStatus(name string, expectSufficient bool) {
 	Eventually(func(g Gomega) {
 		nt := &nyallocatorv1.NodeTemplate{}
 		err := k8sClient.Get(ctx, client.ObjectKey{Name: name}, nt)
-		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(nt.Status.ReconcileInfo.ObservedGeneration).To(Equal(nt.ObjectMeta.Generation))
 		if expectSufficient {
 			g.Expect(isSufficient(nt)).To(BeTrue())
