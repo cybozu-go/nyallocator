@@ -1189,7 +1189,7 @@ var _ = Describe("NodeTemplate Controller", func() {
 			}
 			for _, node := range nodes {
 				err := k8sClient.Create(ctx, &node)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).NotTo(HaveOccurred())
 			}
 			By("creating NodeTemplate")
 			nodeTemplate := &nyallocatorv1.NodeTemplate{
@@ -1212,17 +1212,17 @@ var _ = Describe("NodeTemplate Controller", func() {
 				},
 			}
 			err := k8sClient.Create(ctx, nodeTemplate)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking NodeTemplate status")
 			checkNodeTemplateStatus("test", true)
 
 			By("checking metrics are exposed correctly")
 			resp, err := http.Get("http://localhost:8080/metrics")
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			defer resp.Body.Close()
 			body, err := io.ReadAll(resp.Body)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			Expect(string(body)).To(ContainSubstring("nyallocator_desired_nodes{nodetemplate=\"test\"} 2"))
 			Expect(string(body)).To(ContainSubstring("nyallocator_current_nodes{nodetemplate=\"test\"} 2"))
 			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient_nodes{nodetemplate=\"test\"} 1"))
@@ -1234,25 +1234,25 @@ var _ = Describe("NodeTemplate Controller", func() {
 			By("Deleting Annotation and checking metrics are updated")
 			nt := &nyallocatorv1.NodeTemplate{}
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			delete(nt.Annotations, "test-annotation1")
 			err = k8sClient.Update(ctx, nt)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			Eventually(func(g Gomega) {
 				resp, err := http.Get("http://localhost:8080/metrics")
-				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(err).NotTo(HaveOccurred())
 				defer resp.Body.Close()
 				body, err := io.ReadAll(resp.Body)
-				g.Expect(err).ToNot(HaveOccurred())
-				g.Expect(string(body)).ToNot(ContainSubstring("nyallocator_annotations{key=\"test-annotation1\",nodetemplate=\"test\",value=\"foo\"} 1"))
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(string(body)).NotTo(ContainSubstring("nyallocator_annotations{key=\"test-annotation1\",nodetemplate=\"test\",value=\"foo\"} 1"))
 				g.Expect(string(body)).To(ContainSubstring("nyallocator_annotations{key=\"test-annotation2\",nodetemplate=\"test\",value=\"bar\"} 1"))
 			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 
 			By("Deleting NodeTemplate and checking metrics are removed")
 			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 			err = k8sClient.Delete(ctx, nt)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).NotTo(HaveOccurred())
 
 			By("checking NodeTemplate is deleted")
 			Eventually(func(g Gomega) {
@@ -1264,11 +1264,11 @@ var _ = Describe("NodeTemplate Controller", func() {
 
 			Eventually(func(g Gomega) {
 				resp, err := http.Get("http://localhost:8080/metrics")
-				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(err).NotTo(HaveOccurred())
 				defer resp.Body.Close()
 				body, err := io.ReadAll(resp.Body)
-				g.Expect(err).ToNot(HaveOccurred())
-				g.Expect(string(body)).ToNot(ContainSubstring("nyallocator_annotations"))
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(string(body)).NotTo(ContainSubstring("nyallocator_annotations"))
 			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 		})
 	})
