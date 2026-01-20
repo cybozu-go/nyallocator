@@ -99,6 +99,7 @@ var _ = Describe("nyallocator e2e test", func() {
 			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_sufficient_nodes{nodetemplate="control-plane"} 1`))
 			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_spare_nodes{nodetemplate="control-plane"} 0`))
 			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_reconcile_success{nodetemplate="control-plane"} 1`))
+			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_annotations{key="test-annotation",nodetemplate="control-plane",value="true"} 1`))
 
 			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_current_nodes{nodetemplate="cs"} 2`))
 			g.Expect(string(metrics)).To(ContainSubstring(`nyallocator_desired_nodes{nodetemplate="cs"} 2`))
