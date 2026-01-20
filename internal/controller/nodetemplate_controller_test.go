@@ -1179,6 +1179,98 @@ var _ = Describe("NodeTemplate Controller", func() {
 				g.Expect(string(body)).NotTo(ContainSubstring("nyallocator_reconcile_success{nodetemplate=\"test\"}"))
 			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 		})
+
+		It("should check annotations metrics", func() {
+			By("creating Node")
+			nodes := []corev1.Node{
+				newNode("node1").withLabel(map[string]string{"node-role.kubernetes.io/worker": "true"}).withSpareTaint().build(),
+				newNode("node2").withLabel(map[string]string{"node-role.kubernetes.io/worker": "true"}).withSpareTaint().build(),
+				newNode("node3").withLabel(map[string]string{"node-role.kubernetes.io/worker": "true"}).withSpareTaint().build(),
+			}
+			for _, node := range nodes {
+				err := k8sClient.Create(ctx, &node)
+				Expect(err).NotTo(HaveOccurred())
+			}
+			By("creating NodeTemplate")
+			nodeTemplate := &nyallocatorv1.NodeTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test",
+					Annotations: map[string]string{
+						"test-annotation1": "foo",
+						"test-annotation2": "bar",
+					},
+				},
+				Spec: nyallocatorv1.NodeTemplateSpec{
+					DryRun:   false,
+					Priority: 1,
+					Nodes:    2,
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"node-role.kubernetes.io/worker": "true",
+						},
+					},
+				},
+			}
+			err := k8sClient.Create(ctx, nodeTemplate)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("checking NodeTemplate status")
+			checkNodeTemplateStatus("test", true)
+
+			By("checking metrics are exposed correctly")
+			resp, err := http.Get("http://localhost:8080/metrics")
+			Expect(err).NotTo(HaveOccurred())
+			defer resp.Body.Close()
+			body, err := io.ReadAll(resp.Body)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(body)).To(ContainSubstring("nyallocator_desired_nodes{nodetemplate=\"test\"} 2"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_current_nodes{nodetemplate=\"test\"} 2"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_sufficient_nodes{nodetemplate=\"test\"} 1"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_spare_nodes{nodetemplate=\"test\"} 1"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_reconcile_success{nodetemplate=\"test\"} 1"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_annotations{key=\"test-annotation1\",nodetemplate=\"test\",value=\"foo\"} 1"))
+			Expect(string(body)).To(ContainSubstring("nyallocator_annotations{key=\"test-annotation2\",nodetemplate=\"test\",value=\"bar\"} 1"))
+
+			By("Deleting Annotation and checking metrics are updated")
+			nt := &nyallocatorv1.NodeTemplate{}
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
+			Expect(err).NotTo(HaveOccurred())
+			delete(nt.Annotations, "test-annotation1")
+			err = k8sClient.Update(ctx, nt)
+			Expect(err).NotTo(HaveOccurred())
+			Eventually(func(g Gomega) {
+				resp, err := http.Get("http://localhost:8080/metrics")
+				g.Expect(err).NotTo(HaveOccurred())
+				defer resp.Body.Close()
+				body, err := io.ReadAll(resp.Body)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(string(body)).NotTo(ContainSubstring("nyallocator_annotations{key=\"test-annotation1\",nodetemplate=\"test\",value=\"foo\"} 1"))
+				g.Expect(string(body)).To(ContainSubstring("nyallocator_annotations{key=\"test-annotation2\",nodetemplate=\"test\",value=\"bar\"} 1"))
+			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
+
+			By("Deleting NodeTemplate and checking metrics are removed")
+			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
+			Expect(err).NotTo(HaveOccurred())
+			err = k8sClient.Delete(ctx, nt)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("checking NodeTemplate is deleted")
+			Eventually(func(g Gomega) {
+				nt := &nyallocatorv1.NodeTemplate{}
+				err := k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
+			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				resp, err := http.Get("http://localhost:8080/metrics")
+				g.Expect(err).NotTo(HaveOccurred())
+				defer resp.Body.Close()
+				body, err := io.ReadAll(resp.Body)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(string(body)).NotTo(ContainSubstring("nyallocator_annotations"))
+			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
+		})
 	})
 })
 

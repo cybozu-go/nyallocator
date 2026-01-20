@@ -35,6 +35,11 @@ var (
 		Name:      "reconcile_success",
 		Help:      "Whether reconciliations of the NodeTemplate is successful or not",
 	}, []string{"nodetemplate"})
+	Annotations = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: metricsNamespace,
+		Name:      "annotations",
+		Help:      "Annotations of the NodeTemplate",
+	}, []string{"nodetemplate", "key", "value"})
 )
 
 func init() {
@@ -43,4 +48,5 @@ func init() {
 	metrics.Registry.MustRegister(SufficientNodesVec)
 	metrics.Registry.MustRegister(SpareNodesVec)
 	metrics.Registry.MustRegister(ReconcileSuccessVec)
+	metrics.Registry.MustRegister(Annotations)
 }

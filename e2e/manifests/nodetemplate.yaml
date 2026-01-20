@@ -2,6 +2,8 @@ apiVersion: nyallocator.cybozu.io/v1
 kind: NodeTemplate
 metadata:
   name: control-plane
+  annotations:
+    test-annotation: "true"
 spec:
   dryRun: false
   priority: 100
