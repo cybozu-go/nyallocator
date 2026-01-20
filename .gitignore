@@ -27,3 +27,4 @@ go.work
 *~
 
 e2e/bin/*
+cover.out

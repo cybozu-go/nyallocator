@@ -403,6 +403,10 @@ func (r *NodeTemplateReconciler) updateMetrics(nodeTemplate *nyallocatorv1.NodeT
 			ReconcileSuccessVec.WithLabelValues(nodeTemplate.Name).Set(0)
 		}
 	}
+	Annotations.DeletePartialMatch(map[string]string{"nodetemplate": nodeTemplate.Name})
+	for k, v := range nodeTemplate.Annotations {
+		Annotations.WithLabelValues(nodeTemplate.Name, k, v).Set(1)
+	}
 }
 
 func (r *NodeTemplateReconciler) removeMetrics(nodeTemplate *nyallocatorv1.NodeTemplate) {
@@ -411,6 +415,7 @@ func (r *NodeTemplateReconciler) removeMetrics(nodeTemplate *nyallocatorv1.NodeT
 	DesiredNodesVec.DeleteLabelValues(nodeTemplate.Name)
 	SpareNodesVec.DeleteLabelValues(nodeTemplate.Name)
 	ReconcileSuccessVec.DeleteLabelValues(nodeTemplate.Name)
+	Annotations.DeletePartialMatch(map[string]string{"nodetemplate": nodeTemplate.Name})
 }
 
 func isSufficient(nodeTemplate *nyallocatorv1.NodeTemplate) bool {
