@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.2] 2026-04-10
+
+### Changed
+
+- Pin GitHub Actions to commit hashes for supply chain security in [#17](https://github.com/cybozu-go/nyallocator/pull/17)
+
 ## [1.2.1] 2026-02-17
 
 ### Changed
@@ -57,7 +63,8 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 - first release in [#1](https://github.com/cybozu-go/nyallocator/pull/1)
 
-[Unreleased]: https://github.com/cybozu-go/nyallocator/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/cybozu-go/nyallocator/compare/v1.2.2...HEAD
+[1.2.2]: https://github.com/cybozu-go/nyallocator/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/cybozu-go/nyallocator/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/cybozu-go/nyallocator/compare/v1.1.3...v1.2.0
 [1.1.3]: https://github.com/cybozu-go/nyallocator/compare/v1.1.2...v1.1.3
