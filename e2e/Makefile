@@ -23,7 +23,7 @@ setup: $(KUBECTL) $(KUSTOMIZE) $(KIND)
 
 .PHONY: start
 start:
-	$(KIND) create cluster --name=$(KIND_CLUSTER_NAME) --config=$(KIND_CONFIG) --image=kindest/node:v$(E2ETEST_K8S_VERSION) --wait 1m
+	$(KIND) create cluster --name=$(KIND_CLUSTER_NAME) --config=$(KIND_CONFIG) --image=kindest/node:v$(E2ETEST_K8S_VERSION)@$(E2ETEST_KINDEST_NODE_IMAGE_HASH) --wait 1m
 	$(MAKE) -C ../ docker-build
 	$(KIND) load docker-image $(IMAGE_NAME) --name=$(KIND_CLUSTER_NAME)
 	$(KUSTOMIZE) build ../config/default | $(KUBECTL) apply -f -
