@@ -34,7 +34,7 @@ jobs:
           bot-id: ${{ vars.TAKUMI_GUARD_BOT_ID }}
       - run: make setup
         working-directory: e2e
-      - run: make start
+      - run: make start DOCKER_BUILD_ARGS="--secret id=netrc,src=$HOME/.netrc"
         working-directory: e2e
       - run: make test
         working-directory: e2e
