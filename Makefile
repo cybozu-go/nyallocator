@@ -9,6 +9,7 @@ GOBIN=$(shell go env GOBIN)
 endif
 
 CONTAINER_TOOL ?= docker
+DOCKER_BUILD_ARGS ?=
 
 .PHONY: all
 all: build
@@ -58,7 +59,7 @@ build: manifests generate fmt vet ## Build manager binary.
 
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+	$(CONTAINER_TOOL) build $(DOCKER_BUILD_ARGS) -t ${IMG} .
 
 ##@ Dependencies
 

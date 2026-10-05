@@ -1,18 +1,23 @@
 FROM ghcr.io/cybozu/golang:1.26-noble AS builder
+
+ENV GOPROXY=https://golang.flatt.tech
+
 ARG TARGETOS
 ARG TARGETARCH
 
 WORKDIR /workspace
 COPY go.mod go.mod
 COPY go.sum go.sum
-RUN go mod download
+RUN --mount=type=secret,id=netrc,target=/root/.netrc \
+    go mod download
 
 COPY cmd/main.go cmd/main.go
 COPY api/ api/
 COPY internal/ internal/
 
-
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o nyallocator-controller cmd/main.go
+RUN --mount=type=secret,id=netrc,target=/root/.netrc \
+    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+    go build -a -o nyallocator-controller cmd/main.go
 
 FROM scratch
 WORKDIR /
