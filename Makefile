@@ -11,6 +11,8 @@ endif
 CONTAINER_TOOL ?= docker
 DOCKER_BUILD_ARGS ?=
 
+include Makefile.common
+
 .PHONY: all
 all: build
 
@@ -21,12 +23,16 @@ help: ## Display this help.
 
 ##@ Development
 
+.PHONY: setup
+setup: ## Install tools with aqua.
+	aqua i -l
+
 .PHONY: manifests
-manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
+manifests: ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
 .PHONY: generate
-generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
+generate: ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
 .PHONY: fmt
@@ -39,7 +45,7 @@ vet: ## Run go vet against code.
 
 .PHONY: test
 test: manifests generate fmt vet setup-envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out -v -ginkgo.v
+	KUBEBUILDER_ASSETS="$$($(SETUP_ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out -v -ginkgo.v
 
 .PHONY: test-e2e
 test-e2e: manifests generate fmt vet
@@ -68,49 +74,57 @@ LOCALBIN ?= $(shell pwd)/bin
 $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
-## Tool Binaries
-KUBECTL ?= kubectl
-CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
-ENVTEST ?= $(LOCALBIN)/setup-envtest
-
-## Tool Versions
-KUSTOMIZE_VERSION ?= v5.8.1
-CONTROLLER_TOOLS_VERSION ?= v0.20.1
-#ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
-ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller-runtime | awk -F'[v.]' '{printf "release-%d.%d", $$2, $$3}')
 #ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
 
-.PHONY: controller-gen
-controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
-$(CONTROLLER_GEN): $(LOCALBIN)
-	$(call go-install-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen,$(CONTROLLER_TOOLS_VERSION))
-
 .PHONY: setup-envtest
-setup-envtest: envtest ## Download the binaries required for ENVTEST in the local bin directory.
+setup-envtest: ## Download the binaries required for ENVTEST in the local bin directory.
 	@echo "Setting up envtest binaries for Kubernetes version $(ENVTEST_K8S_VERSION)..."
-	@$(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path || { \
+	@$(SETUP_ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path || { \
 		echo "Error: Failed to set up envtest binaries for version $(ENVTEST_K8S_VERSION)."; \
 		exit 1; \
 	}
 
-.PHONY: envtest
-envtest: $(ENVTEST) ## Download setup-envtest locally if necessary.
-$(ENVTEST): $(LOCALBIN)
-	$(call go-install-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest,$(ENVTEST_VERSION))
+##@ Maintenance
 
-# go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
-# $1 - target path with name of binary
-# $2 - package url which can be installed
-# $3 - specific version of package
-define go-install-tool
-@[ -f "$(1)-$(3)" ] || { \
-set -e; \
-package=$(2)@$(3) ;\
-echo "Downloading $${package}" ;\
-rm -f $(1) || true ;\
-GOBIN=$(LOCALBIN) go install $${package} ;\
-mv $(1) $(1)-$(3) ;\
-} ;\
-ln -sf $(1)-$(3) $(1)
+.PHONY: maintenance
+maintenance: update-aqua ## Update the tools managed by aqua.
+
+# usage: update-aqua-package PACKAGE [TAG_PREFIX]
+# Update the package version in aqua.yaml and its checksums in aqua-checksums.json.
+# The checksums are updated each time, because aqua cannot execute a package whose checksum is not recorded.
+# PACKAGE must be the same as the GitHub repository name.
+define update-aqua-package
+	$(call get-latest-gh,$1,$2)
+	$(YQ) -i '(.packages[] | select(.name | test("^$1@"))).name = "$1@$(latest_gh)"' aqua.yaml
+	aqua update-checksum
 endef
+
+.PHONY: update-aqua
+update-aqua: login-gh
+	$(call update-aqua-package,cli/cli)
+	$(call update-aqua-package,mikefarah/yq)
+	$(call update-aqua-package,kubernetes-sigs/kind)
+	$(call update-aqua-package,kubernetes-sigs/kustomize,kustomize/)
+
+	$(call get-latest-gh,aquaproj/aqua-registry)
+	$(YQ) -i '(.registries[] | select(.type == "standard")).ref = "$(latest_gh)"' aqua.yaml
+
+	$(call get-latest-gh,aquaproj/aqua)
+	sed -i -e 's/aqua_version: .*/aqua_version: $(latest_gh)/' .github/workflows/*.yaml
+
+	aqua update-checksum -prune
+	aqua i -l
+
+.PHONY: login-gh
+login-gh:
+	if ! $(GH) auth status 2>/dev/null; then \
+		echo; \
+		echo '!! You need login to GitHub to proceed. Please follow the next command with "Authenticate Git with your GitHub credentials? (Y)".'; \
+		echo; \
+		$(GH) auth login -h github.com -p HTTPS -w; \
+	fi
+
+.PHONY: logout-gh
+logout-gh:
+	$(GH) auth logout

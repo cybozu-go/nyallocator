@@ -26,5 +26,4 @@ go.work
 *.swo
 *~
 
-e2e/bin/*
 cover.out
