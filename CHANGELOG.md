@@ -5,6 +5,10 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Fix flaky tests of NodeTemplate controller in [#26](https://github.com/cybozu-go/nyallocator/pull/26)
+
 ## [1.2.3] 2026-04-27
 
 ### Changed

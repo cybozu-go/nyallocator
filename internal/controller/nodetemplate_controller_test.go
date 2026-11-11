@@ -270,16 +270,20 @@ var _ = Describe("NodeTemplate Controller", func() {
 			checkNodeTemplateStatus("test2", false)
 
 			By("checking the insufficient reason")
+			// test1 may be reconciled before the cache observes test2.
+			// In that case, the reason is NoSpareNodesFound, so wait until the reason is changed.
 			nt := &nyallocatorv1.NodeTemplate{}
-			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test1"}, nt)
-			Expect(err).NotTo(HaveOccurred())
-			for _, condition := range nt.Status.Conditions {
-				if condition.Type == "Sufficient" {
-					Expect(condition.Status).To(Equal(metav1.ConditionFalse))
-					Expect(condition.Reason).To(Equal("HighPriorityNodeTemplateExists"))
-					break
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKey{Name: "test1"}, nt)
+				g.Expect(err).NotTo(HaveOccurred())
+				for _, condition := range nt.Status.Conditions {
+					if condition.Type == "Sufficient" {
+						g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+						g.Expect(condition.Reason).To(Equal("HighPriorityNodeTemplateExists"))
+						break
+					}
 				}
-			}
+			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 
 			By("checking the insufficient reason")
 			nt = &nyallocatorv1.NodeTemplate{}
@@ -432,16 +436,20 @@ var _ = Describe("NodeTemplate Controller", func() {
 			checkNodeTemplateStatus("test", false)
 
 			By("checking the insufficient reason")
+			// The first reconciliation after the deletion returns before searching spare nodes,
+			// so the reason is ReconcileError. Wait until the next reconciliation updates the reason.
 			nt := &nyallocatorv1.NodeTemplate{}
-			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
-			Expect(err).NotTo(HaveOccurred())
-			for _, condition := range nt.Status.Conditions {
-				if condition.Type == "Sufficient" {
-					Expect(condition.Status).To(Equal(metav1.ConditionFalse))
-					Expect(condition.Reason).To(Equal("NoSpareNodesFound"))
-					break
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
+				g.Expect(err).NotTo(HaveOccurred())
+				for _, condition := range nt.Status.Conditions {
+					if condition.Type == "Sufficient" {
+						g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+						g.Expect(condition.Reason).To(Equal("NoSpareNodesFound"))
+						break
+					}
 				}
-			}
+			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 
 			By("checking metrics are exposed correctly")
 			resp, err := http.Get("http://localhost:8080/metrics")
@@ -712,10 +720,14 @@ var _ = Describe("NodeTemplate Controller", func() {
 
 			By("checking NodeTemplate status")
 			checkNodeTemplateStatus("test", false)
+			// The NodeTemplate may be reconciled before the cache observes the created nodes.
+			// In that case, the status is insufficient with no nodes, so wait until all nodes are allocated.
 			nt := &nyallocatorv1.NodeTemplate{}
-			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(nt.Status.CurrentNodes).To(Equal(3))
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nt)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(nt.Status.CurrentNodes).To(Equal(3))
+			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 
 			By("updating NodeTemplate")
 			nt.Spec.Template.Metadata.Labels["new-label"] = "bar"
@@ -1086,16 +1098,20 @@ var _ = Describe("NodeTemplate Controller", func() {
 
 			By("checking NodeTemplate status after update")
 			checkNodeTemplateStatus("test", false)
-			nodeTemplate = &nyallocatorv1.NodeTemplate{}
-			err = k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nodeTemplate)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(nodeTemplate.Status.CurrentNodes).To(Equal(0))
-			for _, condition := range nodeTemplate.Status.Conditions {
-				if condition.Type == "Sufficient" {
-					Expect(condition.Status).To(Equal(metav1.ConditionFalse))
-					Expect(condition.Reason).To(Equal("NoSpareNodesFound"))
+			// The first reconciliation after the update only removes the reference labels from the nodes,
+			// so the reason is ReconcileError. Wait until the next reconciliation updates the reason.
+			Eventually(func(g Gomega) {
+				nodeTemplate = &nyallocatorv1.NodeTemplate{}
+				err := k8sClient.Get(ctx, client.ObjectKey{Name: "test"}, nodeTemplate)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(nodeTemplate.Status.CurrentNodes).To(Equal(0))
+				for _, condition := range nodeTemplate.Status.Conditions {
+					if condition.Type == "Sufficient" {
+						g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+						g.Expect(condition.Reason).To(Equal("NoSpareNodesFound"))
+					}
 				}
-			}
+			}).WithTimeout(10 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 		})
 
 		It("should remove reference label from nodes when NodeTemplate is deleted", func() {
