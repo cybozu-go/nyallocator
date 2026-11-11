@@ -51,8 +51,8 @@ test: manifests generate fmt vet setup-envtest ## Run tests.
 test-e2e: manifests generate fmt vet
 	make -C e2e setup stop start test
 
-.PHONY: check-generate
-check-generate:
+.PHONY: check-generated
+check-generated:
 	$(MAKE) manifests generate fmt vet
 	go mod tidy
 	git diff --exit-code --name-only
