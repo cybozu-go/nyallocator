@@ -44,7 +44,7 @@ Then run `make setup` to install the tools.
    $ aqua update-checksum -prune
    ```
    See also [Notes on editing aqua.yaml manually](#notes-on-editing-aquayaml-manually).
-8. Run `make check-generate` and commit the regenerated files if any.
+8. Run `make check-generated` and commit the regenerated files if any.
 9. Follow [release.md](/docs/release.md) to update software version.
 
 ## Notes on editing aqua.yaml manually

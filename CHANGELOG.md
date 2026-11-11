@@ -7,6 +7,11 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Changed
 
+- Update dependencies for Kubernetes 1.36 in [#24](https://github.com/cybozu-go/nyallocator/pull/24)
+    - Update modules in go.mod
+    - Use Golang 1.27 for building
+    - Use Kubernetes 1.36 for testing
+    - Update GitHub Actions and development tools (controller-gen, kubectl)
 - Fix flaky tests of NodeTemplate controller in [#26](https://github.com/cybozu-go/nyallocator/pull/26)
 - Manage CLI tools with aqua and add cooldown period in [#25](https://github.com/cybozu-go/nyallocator/pull/25)
     - Manage CLI tools with aqua and verify them with checksums
