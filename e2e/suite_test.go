@@ -3,6 +3,7 @@ package e2e
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
 	"testing"
 	"time"
@@ -12,6 +13,16 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// kubectlPath is the path of kubectl. e2e/Makefile specifies it with the KUBECTL environment variable.
+var kubectlPath string
+
+func init() {
+	kubectlPath = os.Getenv("KUBECTL")
+	if kubectlPath == "" {
+		kubectlPath = "kubectl"
+	}
+}
 
 func TestE2e(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -27,7 +38,7 @@ var _ = BeforeSuite(func() {
 func kubectl(input []byte, args ...string) ([]byte, []byte, error) {
 	stdout := new(bytes.Buffer)
 	stderr := new(bytes.Buffer)
-	cmd := exec.Command("./bin/kubectl", args...)
+	cmd := exec.Command(kubectlPath, args...)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	if input != nil {

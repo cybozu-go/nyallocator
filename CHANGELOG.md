@@ -8,6 +8,9 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ### Changed
 
 - Fix flaky tests of NodeTemplate controller in [#26](https://github.com/cybozu-go/nyallocator/pull/26)
+- Manage CLI tools with aqua and add cooldown period in [#25](https://github.com/cybozu-go/nyallocator/pull/25)
+    - Manage CLI tools with aqua and verify them with checksums
+    - Add `make maintenance` to update the tools, adopting only versions released at least 14 days ago
 
 ## [1.2.3] 2026-04-27
 

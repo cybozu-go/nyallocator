@@ -83,7 +83,7 @@ var _ = Describe("nyallocator e2e test", func() {
 		}
 
 		By("checking the metrics")
-		portForwardCmd := exec.Command("./bin/kubectl", "port-forward", "-n", "nyallocator-system", "deployments/nyallocator-controller-manager", "8080:8080")
+		portForwardCmd := exec.Command(kubectlPath, "port-forward", "-n", "nyallocator-system", "deployments/nyallocator-controller-manager", "8080:8080")
 		portForwardCmd.Start()
 		defer portForwardCmd.Process.Kill()
 
